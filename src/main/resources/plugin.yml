@@ -1,0 +1,9 @@
+name: InfamySMP
+description: $description
+version: '${version}'
+
+main: com.enxivity.infamy.InfamySMP
+api-version: '1.21.11'
+load: POSTWORLD
+
+authors: [ NelA470 ]
