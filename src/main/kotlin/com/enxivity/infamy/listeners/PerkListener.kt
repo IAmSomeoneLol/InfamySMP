@@ -24,10 +24,13 @@ class PerkListener(private val plugin: InfamySMP) : Listener {
         if (event.cause == EntityPotionEffectEvent.Cause.PLUGIN) return
 
         val rep = plugin.infamyManager.getRawReputation(player)
+        val honor = plugin.infamyManager.getHonor(player)
 
-        // Infamy 12 gets double, Honor 9 gets half
-        if (rep >= 12 || rep <= -9) {
-            val modifier = if (rep >= 12) 2.0 else 0.5
+        val hasDoublePotions = plugin.hasInfamyAbility("double_potions", rep)
+        val hasHalvedPotions = plugin.hasHonorAbility("halved_potions", honor)
+
+        if (hasDoublePotions || hasHalvedPotions) {
+            val modifier = if (hasDoublePotions) 2.0 else 0.5
             val newDuration = (effect.duration * modifier).toInt()
 
             val newEffect = PotionEffect(
@@ -48,14 +51,15 @@ class PerkListener(private val plugin: InfamySMP) : Listener {
         val entity = event.rightClicked
 
         if (entity is Villager) {
-            val infamy = plugin.infamyManager.getInfamy(player)
-            // Only Infamy triggers bad trades. Honor uses vanilla trades + native HotV effect
-            if (infamy >= 12) {
+            val rep = plugin.infamyManager.getRawReputation(player)
+
+            if (plugin.hasInfamyAbility("villager_wary", rep)) {
                 event.isCancelled = true
 
+                // Keep the internal scaling relative to their total rep
                 val costMultiplier = when {
-                    infamy >= 20 -> 2.0
-                    infamy >= 15 -> 1.75
+                    rep >= 20 -> 2.0
+                    rep >= 15 -> 1.75
                     else -> 1.5
                 }
 

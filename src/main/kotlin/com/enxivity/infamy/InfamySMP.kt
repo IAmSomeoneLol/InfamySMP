@@ -1,24 +1,21 @@
-// Main plugin class. Connected to plugin.yml.
 package com.enxivity.infamy
 
-import com.enxivity.infamy.commands.TeamCommand
-import com.enxivity.infamy.listeners.BlockBreakListener
-import com.enxivity.infamy.listeners.BossAbilityListener
-import com.enxivity.infamy.listeners.BottleInteractListener
-import com.enxivity.infamy.listeners.CombatListener
-import com.enxivity.infamy.listeners.DeathListener
-import com.enxivity.infamy.listeners.PerkListener
+import com.enxivity.infamy.commands.InfamyCommand
+import com.enxivity.infamy.listeners.*
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.attribute.Attribute
 import org.bukkit.attribute.AttributeModifier
+import org.bukkit.event.EventHandler
+import org.bukkit.event.Listener
+import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.ShapedRecipe
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 
-class InfamySMP : JavaPlugin() {
+class InfamySMP : JavaPlugin(), Listener {
     lateinit var infamyManager: InfamyManager
     lateinit var itemManager: ItemManager
     lateinit var teamManager: TeamManager
@@ -26,20 +23,24 @@ class InfamySMP : JavaPlugin() {
 
     override fun onEnable() {
         saveDefaultConfig()
+        reloadConfig()
 
         itemManager = ItemManager(this)
         infamyManager = InfamyManager(this)
         teamManager = TeamManager()
         bossListener = BossAbilityListener(this)
 
+        server.pluginManager.registerEvents(this, this)
         server.pluginManager.registerEvents(DeathListener(this), this)
         server.pluginManager.registerEvents(BottleInteractListener(this), this)
         server.pluginManager.registerEvents(CombatListener(this), this)
         server.pluginManager.registerEvents(PerkListener(this), this)
         server.pluginManager.registerEvents(BlockBreakListener(this), this)
         server.pluginManager.registerEvents(bossListener, this)
+        server.pluginManager.registerEvents(HonorDeedListener(this), this)
+        server.pluginManager.registerEvents(IndestructibleItemListener(this), this) // Registered Protection layer
 
-        getCommand("team")?.setExecutor(TeamCommand(this))
+        getCommand("infamy")?.setExecutor(InfamyCommand(this))
         registerElytraRecipe()
 
         val penaltyKey = NamespacedKey(this, "honor_weapon_penalty")
@@ -51,36 +52,28 @@ class InfamySMP : JavaPlugin() {
                 val rep = infamyManager.getRawReputation(player)
                 val honor = infamyManager.getHonor(player)
 
-                // --- INFAMY 15: Resistance 1 ---
-                if (rep >= 15) {
+                if (hasInfamyAbility("passive_resistance", rep)) {
                     player.addPotionEffect(PotionEffect(PotionEffectType.RESISTANCE, 60, 0, true, false, false))
                 }
 
-                // --- INFAMY 20: Constant Strength 1 ---
-                if (rep >= 20 && !bossListener.activeSacrifices.contains(player.uniqueId)) {
+                if (hasInfamyAbility("mace_slam", rep) && !bossListener.activeSacrifices.contains(player.uniqueId)) {
                     player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 0, true, false, false))
                 }
 
-                // --- INFAMY 21: Constant Glowing ---
-                if (rep >= 21) {
+                if (hasInfamyAbility("boss_sacrifice", rep)) {
                     player.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, 60, 0, true, false, false))
                 }
 
-                // --- INFAMY 21: Helmet Sacrifice Active (Strength 3 & Stripper) ---
                 if (bossListener.activeSacrifices.contains(player.uniqueId)) {
                     player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 2, true, false, false))
-
-                    // Foolproof Helmet Remover: "As if it was never there"
                     val helmet = player.inventory.helmet
                     if (helmet != null && helmet.type != Material.AIR) {
                         player.inventory.helmet = null
-                        // Safely drop it at their feet so they don't lose their god-armor
                         player.world.dropItemNaturally(player.location, helmet)
                     }
                 }
 
-                // --- HONOR 6+: Hero of the Village ---
-                if (honor >= 6) {
+                if (hasHonorAbility("hero_of_the_village", honor)) {
                     val hotvLevel = when {
                         honor >= 12 -> 2
                         honor >= 9 -> 1
@@ -89,7 +82,6 @@ class InfamySMP : JavaPlugin() {
                     player.addPotionEffect(PotionEffect(PotionEffectType.HERO_OF_THE_VILLAGE, 100, hotvLevel, true, false, false))
                 }
 
-                // --- HONOR 12: Weapon Cooldown Penalty ---
                 val currentItem = player.inventory.itemInMainHand.type
                 val uuid = player.uniqueId
 
@@ -101,13 +93,12 @@ class InfamySMP : JavaPlugin() {
                     if (attackSpeedAttr != null) {
                         attackSpeedAttr.modifiers.find { it.key == penaltyKey }?.let { attackSpeedAttr.removeModifier(it) }
 
-                        if (honor >= 12) {
+                        if (hasHonorAbility("weapon_cooldowns", honor)) {
                             val penalty = when {
                                 currentItem.name.endsWith("_SWORD") -> -0.6
                                 currentItem.name.endsWith("_AXE") -> -0.4
                                 else -> 0.0
                             }
-
                             if (penalty < 0) {
                                 val mod = AttributeModifier(penaltyKey, penalty, AttributeModifier.Operation.ADD_NUMBER)
                                 attackSpeedAttr.addModifier(mod)
@@ -117,6 +108,21 @@ class InfamySMP : JavaPlugin() {
                 }
             }
         }, 0L, 10L)
+    }
+
+    @EventHandler
+    fun onPlayerJoin(event: PlayerJoinEvent) {
+        infamyManager.updateTabList(event.player)
+    }
+
+    fun hasInfamyAbility(abilityName: String, rep: Int): Boolean {
+        if (!config.getBoolean("infamy_abilities.$abilityName.enabled", true)) return false
+        return rep >= config.getInt("infamy_abilities.$abilityName.level")
+    }
+
+    fun hasHonorAbility(abilityName: String, honor: Int): Boolean {
+        if (!config.getBoolean("honor_abilities.$abilityName.enabled", true)) return false
+        return honor >= config.getInt("honor_abilities.$abilityName.level")
     }
 
     private fun registerElytraRecipe() {

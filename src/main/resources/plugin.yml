@@ -9,6 +9,7 @@ load: POSTWORLD
 authors: [ NelA470 ]
 
 commands:
-  team:
-    description: Manage your SMP team alliances.
-    usage: /team <add|remove|list> <player>
+  infamy:
+    description: Master command for the Infamy SMP system.
+    usage: /infamy <team|add|points> ...
+    aliases: [inf]
