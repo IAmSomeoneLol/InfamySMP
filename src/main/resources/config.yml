@@ -13,10 +13,11 @@ prefixes:
 
 # Global Toggle Settings
 settings:
-  drop-bottle-on-kill: true  # If true, player kills drop physical bottles instead of auto-adding points
-  allow-withdraw: true       # If true, players can use /infamy withdraw to pull out infamy points
+  drop-bottle-on-kill: true
+  allow-withdraw: true
+  boss-bottle-announce: true
+  boss-bottle-sound: true
 
-# Custom Model Data mapping for custom textures/animations (.json/.mcmeta)
 custom-model-data:
   infamy_bottle: 10001
   honor_bottle: 10002
