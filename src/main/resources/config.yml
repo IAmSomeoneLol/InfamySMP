@@ -78,9 +78,9 @@ honor_abilities:
 elytra-recipe:
   enabled: true
   shape:
-    - "P N P"
-    - "N S N"
-    - "F   F"
+    - "PNP"
+    - "NSN"
+    - "F F"
   ingredients:
     P: "PHANTOM_MEMBRANE"
     N: "NETHERITE_INGOT"

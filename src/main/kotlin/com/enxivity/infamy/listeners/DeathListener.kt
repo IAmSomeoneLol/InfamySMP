@@ -1,6 +1,7 @@
 package com.enxivity.infamy.listeners
 
 import com.enxivity.infamy.InfamySMP
+import com.enxivity.infamy.KillRecord
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
@@ -21,21 +22,34 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
         val killer = victim.killer
         val victimRep = plugin.infamyManager.getRawReputation(victim)
 
-        // 1. Level 21 Boss Death Mechanics
+        plugin.infamyManager.playerDeaths[victim.uniqueId] = (plugin.infamyManager.playerDeaths[victim.uniqueId] ?: 0) + 1
+
+        var killIdStr: String? = null
+
+        // IGNORES SELF KILLS
+        if (killer != null && killer.uniqueId != victim.uniqueId) {
+            plugin.infamyManager.playerKills[killer.uniqueId] = (plugin.infamyManager.playerKills[killer.uniqueId] ?: 0) + 1
+
+            val killId = UUID.randomUUID()
+            killIdStr = killId.toString()
+            val locStr = "${victim.location.blockX}, ${victim.location.blockY}, ${victim.location.blockZ} (${victim.world.name})"
+            val dropAsBottle = plugin.config.getBoolean("settings.drop-bottle-on-kill", true)
+
+            val record = KillRecord(killId, killer.uniqueId, killer.name, victim.uniqueId, victim.name, System.currentTimeMillis(), locStr, !dropAsBottle, null, null)
+            plugin.infamyManager.killHistory.add(record)
+        }
+
         if (victimRep >= 21) {
-            val bossBottle = plugin.itemManager.createBossBottle()
-            val droppedItem = victim.world.dropItemNaturally(victim.location, bossBottle)
+            val killerName = killer?.name ?: "The Environment"
+            val pureBottle = plugin.itemManager.createPureInfamyBottle(victim.name, killerName, killIdStr)
+            val droppedItem = victim.world.dropItemNaturally(victim.location, pureBottle)
             droppedItem.isInvulnerable = true
 
-            // Feature: Global Announcement
             if (plugin.config.getBoolean("settings.boss-bottle-announce", true)) {
-                Bukkit.broadcast(Component.text("The Most Infamous Player has fallen! The Core of Infamy has been dropped!", NamedTextColor.DARK_RED, TextDecoration.BOLD))
+                Bukkit.broadcast(Component.text("The Most Infamous Player has fallen! The Pure Infamy Bottle has been dropped!", NamedTextColor.DARK_RED, TextDecoration.BOLD))
             }
-            // Feature: Global Dragon Sound
             if (plugin.config.getBoolean("settings.boss-bottle-sound", true)) {
-                for (onlinePlayer in Bukkit.getOnlinePlayers()) {
-                    onlinePlayer.playSound(onlinePlayer.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f)
-                }
+                Bukkit.getOnlinePlayers().forEach { it.playSound(it.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f) }
             }
         }
 
@@ -46,7 +60,6 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
         }
         plugin.infamyManager.setReputation(victim, victimRep - loseAmount)
 
-        // 2. Killer Logic
         if (killer != null && killer.uniqueId != victim.uniqueId) {
             val now = System.currentTimeMillis()
             val logs = recentKills.computeIfAbsent(killer.uniqueId) { mutableListOf() }
@@ -66,10 +79,8 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
             }
 
             if (awardPoints > 0) {
-                val dropAsBottle = plugin.config.getBoolean("settings.drop-bottle-on-kill", true)
-
-                if (dropAsBottle) {
-                    val infamyBottle = plugin.itemManager.createInfamyBottle(awardPoints)
+                if (plugin.config.getBoolean("settings.drop-bottle-on-kill", true)) {
+                    val infamyBottle = plugin.itemManager.createInfamyBottle(awardPoints, null, null, killIdStr)
                     val droppedItem = victim.world.dropItemNaturally(victim.location, infamyBottle)
                     droppedItem.isInvulnerable = true
                 } else {
@@ -81,9 +92,7 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
         }
 
         if (victimRep >= 15 && plugin.config.getBoolean("infamy_abilities.bad_fortune.enabled", true)) {
-            if (victim.hasPotionEffect(org.bukkit.potion.PotionEffectType.INVISIBILITY)) {
-                event.deathMessage(null)
-            }
+            if (victim.hasPotionEffect(org.bukkit.potion.PotionEffectType.INVISIBILITY)) event.deathMessage(null)
         }
     }
 }

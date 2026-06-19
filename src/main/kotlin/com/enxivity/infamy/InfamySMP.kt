@@ -27,7 +27,14 @@ class InfamySMP : JavaPlugin(), Listener {
 
         itemManager = ItemManager(this)
         infamyManager = InfamyManager(this)
-        teamManager = TeamManager()
+
+        // Passed 'this' to the team manager
+        teamManager = TeamManager(this)
+
+        // LOAD ALL SAVED DATA FIRST
+        infamyManager.loadData()
+        teamManager.loadData()
+
         bossListener = BossAbilityListener(this)
 
         server.pluginManager.registerEvents(this, this)
@@ -38,9 +45,12 @@ class InfamySMP : JavaPlugin(), Listener {
         server.pluginManager.registerEvents(BlockBreakListener(this), this)
         server.pluginManager.registerEvents(bossListener, this)
         server.pluginManager.registerEvents(HonorDeedListener(this), this)
-        server.pluginManager.registerEvents(IndestructibleItemListener(this), this) // Registered Protection layer
+        server.pluginManager.registerEvents(ItemRestrictionsListener(this), this)
 
-        getCommand("infamy")?.setExecutor(InfamyCommand(this))
+        val infamyCmd = InfamyCommand(this)
+        getCommand("infamy")?.setExecutor(infamyCmd)
+        getCommand("infamy")?.setTabCompleter(infamyCmd)
+
         registerElytraRecipe()
 
         val penaltyKey = NamespacedKey(this, "honor_weapon_penalty")
@@ -110,6 +120,14 @@ class InfamySMP : JavaPlugin(), Listener {
         }, 0L, 10L)
     }
 
+    // ==========================================
+    // SAVE ALL DATA WHEN SERVER SHUTS DOWN
+    // ==========================================
+    override fun onDisable() {
+        infamyManager.saveData()
+        teamManager.saveData()
+    }
+
     @EventHandler
     fun onPlayerJoin(event: PlayerJoinEvent) {
         infamyManager.updateTabList(event.player)
@@ -142,6 +160,4 @@ class InfamySMP : JavaPlugin(), Listener {
         }
         server.addRecipe(recipe)
     }
-
-    override fun onDisable() {}
 }

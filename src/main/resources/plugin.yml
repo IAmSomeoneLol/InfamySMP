@@ -1,5 +1,5 @@
 name: InfamySMP
-description: $description
+description: ${description}
 version: '${version}'
 
 main: com.enxivity.infamy.InfamySMP
@@ -11,5 +11,18 @@ authors: [ NelA470 ]
 commands:
   infamy:
     description: Master command for the Infamy SMP system.
-    usage: /infamy <team|add|points> ...
     aliases: [inf]
+    usage: |
+      Incorrect usage! Available commands:
+      /infamy info
+      /infamy team [create|invite|accept|decline|leave|kick|list]
+      /infamy level [player] [reset]
+      /infamy withdraw <amount>
+      /infamy history [admin]
+      /infamy add <player> <honor|infamy> <amount>
+      /infamy pureinfamybottle <player>
+
+permissions:
+  infamysmp.admin:
+    description: Allows the use of Infamy admin commands.
+    default: op
