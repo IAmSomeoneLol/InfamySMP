@@ -19,7 +19,7 @@ class InfamySMP : JavaPlugin(), Listener {
     lateinit var infamyManager: InfamyManager
     lateinit var itemManager: ItemManager
     lateinit var teamManager: TeamManager
-    lateinit var bossListener: BossAbilityListener
+    lateinit var combatListener: CombatListener
 
     override fun onEnable() {
         saveDefaultConfig()
@@ -27,23 +27,19 @@ class InfamySMP : JavaPlugin(), Listener {
 
         itemManager = ItemManager(this)
         infamyManager = InfamyManager(this)
-
-        // Passed 'this' to the team manager
         teamManager = TeamManager(this)
 
-        // LOAD ALL SAVED DATA FIRST
         infamyManager.loadData()
         teamManager.loadData()
 
-        bossListener = BossAbilityListener(this)
+        combatListener = CombatListener(this)
 
         server.pluginManager.registerEvents(this, this)
         server.pluginManager.registerEvents(DeathListener(this), this)
         server.pluginManager.registerEvents(BottleInteractListener(this), this)
-        server.pluginManager.registerEvents(CombatListener(this), this)
+        server.pluginManager.registerEvents(combatListener, this)
         server.pluginManager.registerEvents(PerkListener(this), this)
         server.pluginManager.registerEvents(BlockBreakListener(this), this)
-        server.pluginManager.registerEvents(bossListener, this)
         server.pluginManager.registerEvents(HonorDeedListener(this), this)
         server.pluginManager.registerEvents(ItemRestrictionsListener(this), this)
 
@@ -54,6 +50,9 @@ class InfamySMP : JavaPlugin(), Listener {
         registerElytraRecipe()
 
         val penaltyKey = NamespacedKey(this, "honor_weapon_penalty")
+        val hellcrushArmorKey = NamespacedKey(this, "hellcrush_armor_penalty")
+        val hellcrushToughKey = NamespacedKey(this, "hellcrush_toughness_penalty")
+
         val lastHeldItems = mutableMapOf<java.util.UUID, org.bukkit.Material>()
         val lastHonorLevels = mutableMapOf<java.util.UUID, Int>()
 
@@ -62,34 +61,51 @@ class InfamySMP : JavaPlugin(), Listener {
                 val rep = infamyManager.getRawReputation(player)
                 val honor = infamyManager.getHonor(player)
 
-                if (hasInfamyAbility("passive_resistance", rep)) {
-                    player.addPotionEffect(PotionEffect(PotionEffectType.RESISTANCE, 60, 0, true, false, false))
-                }
+                if (rep >= 15) player.addPotionEffect(PotionEffect(PotionEffectType.RESISTANCE, 60, 0, true, false, false))
 
-                if (hasInfamyAbility("mace_slam", rep) && !bossListener.activeSacrifices.contains(player.uniqueId)) {
-                    player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 0, true, false, false))
-                }
+                // Level 21: Constant Glowing
+                if (rep >= 21) player.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, 60, 0, true, false, false))
 
-                if (hasInfamyAbility("boss_sacrifice", rep)) {
-                    player.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, 60, 0, true, false, false))
-                }
-
-                if (bossListener.activeSacrifices.contains(player.uniqueId)) {
-                    player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 2, true, false, false))
-                    val helmet = player.inventory.helmet
-                    if (helmet != null && helmet.type != Material.AIR) {
-                        player.inventory.helmet = null
-                        player.world.dropItemNaturally(player.location, helmet)
+                // Level 20+: Constant Strength 1 (Unless Hellcrush applies Str 3)
+                if (rep >= 20) {
+                    if (combatListener.activeSacrifices.contains(player.uniqueId)) {
+                        player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 2, true, false, false))
+                    } else {
+                        player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 0, true, false, false))
                     }
                 }
 
-                if (hasHonorAbility("hero_of_the_village", honor)) {
-                    val hotvLevel = when {
-                        honor >= 12 -> 2
-                        honor >= 9 -> 1
-                        else -> 0
+                // HELLCRUSH DYNAMIC STAT NEGATOR LOOP
+                val armorAttr = player.getAttribute(Attribute.ARMOR)
+                val toughAttr = player.getAttribute(Attribute.ARMOR_TOUGHNESS)
+
+                if (combatListener.activeSacrifices.contains(player.uniqueId)) {
+                    var aVal = 0.0
+                    var tVal = 0.0
+                    val helm = player.inventory.helmet
+                    if (helm != null) {
+                        when (helm.type) {
+                            Material.LEATHER_HELMET -> aVal = 1.0
+                            Material.GOLDEN_HELMET, Material.CHAINMAIL_HELMET, Material.IRON_HELMET, Material.TURTLE_HELMET -> aVal = 2.0
+                            Material.DIAMOND_HELMET -> { aVal = 3.0; tVal = 2.0 }
+                            Material.NETHERITE_HELMET -> { aVal = 3.0; tVal = 3.0 }
+                            else -> {}
+                        }
                     }
-                    player.addPotionEffect(PotionEffect(PotionEffectType.HERO_OF_THE_VILLAGE, 100, hotvLevel, true, false, false))
+
+                    armorAttr?.modifiers?.find { it.key == hellcrushArmorKey }?.let { armorAttr.removeModifier(it) }
+                    toughAttr?.modifiers?.find { it.key == hellcrushToughKey }?.let { toughAttr.removeModifier(it) }
+
+                    if (aVal > 0) armorAttr?.addModifier(AttributeModifier(hellcrushArmorKey, -aVal, AttributeModifier.Operation.ADD_NUMBER))
+                    if (tVal > 0) toughAttr?.addModifier(AttributeModifier(hellcrushToughKey, -tVal, AttributeModifier.Operation.ADD_NUMBER))
+                } else {
+                    armorAttr?.modifiers?.find { it.key == hellcrushArmorKey }?.let { armorAttr.removeModifier(it) }
+                    toughAttr?.modifiers?.find { it.key == hellcrushToughKey }?.let { toughAttr.removeModifier(it) }
+                }
+
+                if (honor >= 6) {
+                    val hotvLevel = when { honor >= 12 -> 2; honor >= 9 -> 1; honor >= 6 -> 0; else -> -1 }
+                    if (hotvLevel >= 0) player.addPotionEffect(PotionEffect(PotionEffectType.HERO_OF_THE_VILLAGE, 100, hotvLevel, true, false, false))
                 }
 
                 val currentItem = player.inventory.itemInMainHand.type
@@ -103,7 +119,7 @@ class InfamySMP : JavaPlugin(), Listener {
                     if (attackSpeedAttr != null) {
                         attackSpeedAttr.modifiers.find { it.key == penaltyKey }?.let { attackSpeedAttr.removeModifier(it) }
 
-                        if (hasHonorAbility("weapon_cooldowns", honor)) {
+                        if (honor >= 12) {
                             val penalty = when {
                                 currentItem.name.endsWith("_SWORD") -> -0.6
                                 currentItem.name.endsWith("_AXE") -> -0.4
@@ -120,10 +136,10 @@ class InfamySMP : JavaPlugin(), Listener {
         }, 0L, 10L)
     }
 
-    // ==========================================
-    // SAVE ALL DATA WHEN SERVER SHUTS DOWN
-    // ==========================================
     override fun onDisable() {
+        if (::combatListener.isInitialized) {
+            server.onlinePlayers.forEach { combatListener.restoreHelmet(it) }
+        }
         infamyManager.saveData()
         teamManager.saveData()
     }
@@ -131,16 +147,6 @@ class InfamySMP : JavaPlugin(), Listener {
     @EventHandler
     fun onPlayerJoin(event: PlayerJoinEvent) {
         infamyManager.updateTabList(event.player)
-    }
-
-    fun hasInfamyAbility(abilityName: String, rep: Int): Boolean {
-        if (!config.getBoolean("infamy_abilities.$abilityName.enabled", true)) return false
-        return rep >= config.getInt("infamy_abilities.$abilityName.level")
-    }
-
-    fun hasHonorAbility(abilityName: String, honor: Int): Boolean {
-        if (!config.getBoolean("honor_abilities.$abilityName.enabled", true)) return false
-        return honor >= config.getInt("honor_abilities.$abilityName.level")
     }
 
     private fun registerElytraRecipe() {

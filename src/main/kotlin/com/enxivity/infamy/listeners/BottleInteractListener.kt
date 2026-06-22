@@ -20,14 +20,12 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
         val pdc = meta.persistentDataContainer
         val currentRep = plugin.infamyManager.getRawReputation(player)
 
-        fun markRedeemed(consumer: org.bukkit.entity.Player) {
+        fun markConsumed(consumer: org.bukkit.entity.Player) {
             if (pdc.has(plugin.itemManager.killIdKey, PersistentDataType.STRING)) {
                 val killIdStr = pdc.get(plugin.itemManager.killIdKey, PersistentDataType.STRING)
                 val record = plugin.infamyManager.killHistory.find { it.id.toString() == killIdStr }
                 if (record != null) {
-                    record.redeemed = true
-                    record.redeemedBy = consumer.uniqueId
-                    record.redeemedByName = consumer.name
+                    record.status = if (record.killer == consumer.uniqueId) "WITHDRAWN" else "STOLEN"
                 }
             }
         }
@@ -42,17 +40,13 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                 if (currentWithdrawn >= points) plugin.infamyManager.withdrawnPoints[ownerUUID] = currentWithdrawn - points
             }
 
-            if (currentRep >= 20) {
-                player.sendMessage(Component.text("You cannot exceed Level 20 without consuming a Pure Infamy Bottle!", NamedTextColor.RED))
-                return
-            }
+            if (currentRep >= 20) return player.sendMessage(Component.text("You cannot exceed Level 20 without consuming a Pure Infamy Bottle!", NamedTextColor.RED))
 
             val targetRep = currentRep + points
-
             if (targetRep > 20) {
                 val refundAmount = targetRep - 20
                 plugin.infamyManager.setReputation(player, 20)
-                player.sendMessage(Component.text("You hit the Level 20 cap! Refunded $refundAmount point(s) into a new bottle.", NamedTextColor.YELLOW))
+                player.sendMessage(Component.text("You hit the Level 20 cap! Refunded $refundAmount point(s).", NamedTextColor.YELLOW))
 
                 val origName = pdc.get(plugin.itemManager.ownerNameKey, PersistentDataType.STRING)
                 val origUUID = pdc.get(plugin.itemManager.ownerUuidKey, PersistentDataType.STRING)
@@ -65,7 +59,7 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                 player.sendMessage(Component.text("You consumed an Infamy Bottle!", NamedTextColor.GREEN))
             }
 
-            markRedeemed(player)
+            markConsumed(player)
             plugin.server.scheduler.runTask(plugin, Runnable { player.inventory.getItem(event.hand)?.subtract(1) })
             return
         }
@@ -84,9 +78,12 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
             if (plugin.infamyManager.currentBoss != null) return player.sendMessage(Component.text("The title of Most Infamous is already held!", NamedTextColor.RED))
 
             plugin.infamyManager.setReputation(player, 21)
-            player.world.playSound(player.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f)
 
-            markRedeemed(player)
+            if (plugin.infamyManager.getSettings(player.uniqueId).globalSounds) {
+                player.world.playSound(player.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f)
+            }
+
+            markConsumed(player)
             plugin.server.scheduler.runTask(plugin, Runnable { player.inventory.getItem(event.hand)?.subtract(1) })
         }
     }

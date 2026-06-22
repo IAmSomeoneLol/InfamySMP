@@ -10,23 +10,16 @@ import java.util.UUID
 
 data class TeamData(val name: String, val leader: UUID, val members: MutableSet<UUID> = mutableSetOf())
 
-// ADDED the plugin parameter here!
 class TeamManager(private val plugin: InfamySMP) {
     val teams = mutableMapOf<String, TeamData>()
     val playerTeams = mutableMapOf<UUID, String>()
     private val pendingInvites = mutableMapOf<UUID, String>()
 
-    // ==========================================
-    // DATA PERSISTENCE (SAVE / LOAD)
-    // ==========================================
     fun saveData() {
         if (!plugin.dataFolder.exists()) plugin.dataFolder.mkdirs()
         val file = File(plugin.dataFolder, "teams.yml")
         val config = YamlConfiguration.loadConfiguration(file)
-
-        // Clear old data to prevent ghosts
         config.set("teams", null)
-
         teams.forEach { (name, data) ->
             config.set("teams.$name.leader", data.leader.toString())
             config.set("teams.$name.members", data.members.map { it.toString() })
@@ -38,24 +31,25 @@ class TeamManager(private val plugin: InfamySMP) {
         val file = File(plugin.dataFolder, "teams.yml")
         if (!file.exists()) return
         val config = YamlConfiguration.loadConfiguration(file)
-
         config.getConfigurationSection("teams")?.getKeys(false)?.forEach { name ->
-            val leaderStr = config.getString("teams.$name.leader") ?: return@forEach
-            val leader = UUID.fromString(leaderStr)
+            val leader = UUID.fromString(config.getString("teams.$name.leader") ?: return@forEach)
             val membersList = config.getStringList("teams.$name.members").map { UUID.fromString(it) }.toMutableSet()
-
             teams[name] = TeamData(name, leader, membersList)
             membersList.forEach { member -> playerTeams[member] = name }
         }
     }
 
-    // ==========================================
-    // TEAM LOGIC
-    // ==========================================
+    private fun broadcastToTeam(teamName: String, message: String, color: NamedTextColor) {
+        val team = teams[teamName] ?: return
+        team.members.forEach { memberId ->
+            val p = Bukkit.getPlayer(memberId)
+            if (p != null && plugin.infamyManager.getSettings(p.uniqueId).teamMessages) p.sendMessage(Component.text(message, color))
+        }
+    }
+
     fun createTeam(leader: Player, teamName: String): Boolean {
         if (playerTeams.containsKey(leader.uniqueId)) return false
         if (teams.containsKey(teamName.lowercase())) return false
-
         val newTeam = TeamData(teamName, leader.uniqueId)
         newTeam.members.add(leader.uniqueId)
         teams[teamName.lowercase()] = newTeam
@@ -66,14 +60,9 @@ class TeamManager(private val plugin: InfamySMP) {
     fun disbandTeam(leader: Player): Boolean {
         val teamName = playerTeams[leader.uniqueId] ?: return false
         val team = teams[teamName] ?: return false
-
         if (team.leader != leader.uniqueId) return false
-
-        team.members.forEach { memberId ->
-            playerTeams.remove(memberId)
-            val member = Bukkit.getPlayer(memberId)
-            member?.sendMessage(Component.text("The team '$teamName' has been disbanded by the leader.", NamedTextColor.RED))
-        }
+        broadcastToTeam(teamName, "The team '$teamName' has been disbanded by the leader.", NamedTextColor.RED)
+        team.members.forEach { playerTeams.remove(it) }
         teams.remove(teamName)
         return true
     }
@@ -87,47 +76,34 @@ class TeamManager(private val plugin: InfamySMP) {
     fun acceptInvite(target: Player): Boolean {
         val teamName = pendingInvites.remove(target.uniqueId) ?: return false
         val team = teams[teamName] ?: return false
-
         team.members.add(target.uniqueId)
         playerTeams[target.uniqueId] = teamName
-
-        team.members.forEach { memberId ->
-            Bukkit.getPlayer(memberId)?.sendMessage(Component.text("${target.name} joined the team!", NamedTextColor.GREEN))
-        }
+        broadcastToTeam(teamName, "${target.name} joined the team!", NamedTextColor.GREEN)
         return true
     }
 
-    fun declineInvite(target: UUID): Boolean {
-        return pendingInvites.remove(target) != null
-    }
+    fun declineInvite(target: UUID): Boolean = pendingInvites.remove(target) != null
 
     fun leaveTeam(player: Player): Boolean {
         val teamName = playerTeams.remove(player.uniqueId) ?: return false
         val team = teams[teamName] ?: return false
-
         if (team.leader == player.uniqueId) {
             player.sendMessage(Component.text("You cannot leave as the leader. You must /infamy team disband.", NamedTextColor.RED))
             playerTeams[player.uniqueId] = teamName
             return false
         }
-
         team.members.remove(player.uniqueId)
-        team.members.forEach { memberId ->
-            Bukkit.getPlayer(memberId)?.sendMessage(Component.text("${player.name} left the team.", NamedTextColor.YELLOW))
-        }
+        broadcastToTeam(teamName, "${player.name} left the team.", NamedTextColor.YELLOW)
         return true
     }
 
     fun kickTeammate(leader: Player, target: UUID): Boolean {
         val teamName = playerTeams[leader.uniqueId] ?: return false
         val team = teams[teamName] ?: return false
-
-        if (team.leader != leader.uniqueId) return false
-        if (target == leader.uniqueId) return false
-        if (!team.members.contains(target)) return false
-
+        if (team.leader != leader.uniqueId || target == leader.uniqueId || !team.members.contains(target)) return false
         team.members.remove(target)
         playerTeams.remove(target)
+        broadcastToTeam(teamName, "${Bukkit.getOfflinePlayer(target).name} was kicked from the team.", NamedTextColor.YELLOW)
         return true
     }
 
@@ -137,8 +113,5 @@ class TeamManager(private val plugin: InfamySMP) {
         return team1 == team2
     }
 
-    fun getTeam(playerUUID: UUID): TeamData? {
-        val teamName = playerTeams[playerUUID] ?: return null
-        return teams[teamName]
-    }
+    fun getTeam(playerUUID: UUID): TeamData? = teams[playerTeams[playerUUID]]
 }

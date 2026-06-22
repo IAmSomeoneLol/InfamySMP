@@ -23,41 +23,45 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
         val victimRep = plugin.infamyManager.getRawReputation(victim)
 
         plugin.infamyManager.playerDeaths[victim.uniqueId] = (plugin.infamyManager.playerDeaths[victim.uniqueId] ?: 0) + 1
-
         var killIdStr: String? = null
 
-        // IGNORES SELF KILLS
         if (killer != null && killer.uniqueId != victim.uniqueId) {
             plugin.infamyManager.playerKills[killer.uniqueId] = (plugin.infamyManager.playerKills[killer.uniqueId] ?: 0) + 1
-
             val killId = UUID.randomUUID()
             killIdStr = killId.toString()
             val locStr = "${victim.location.blockX}, ${victim.location.blockY}, ${victim.location.blockZ} (${victim.world.name})"
             val dropAsBottle = plugin.config.getBoolean("settings.drop-bottle-on-kill", true)
 
-            val record = KillRecord(killId, killer.uniqueId, killer.name, victim.uniqueId, victim.name, System.currentTimeMillis(), locStr, !dropAsBottle, null, null)
+            val initialStatus = if (dropAsBottle) "DROPPED" else "WITHDRAWN"
+            val record = KillRecord(killId, killer.uniqueId, killer.name, victim.uniqueId, victim.name, System.currentTimeMillis(), locStr, initialStatus)
             plugin.infamyManager.killHistory.add(record)
         }
 
         if (victimRep >= 21) {
             val killerName = killer?.name ?: "The Environment"
             val pureBottle = plugin.itemManager.createPureInfamyBottle(victim.name, killerName, killIdStr)
-            val droppedItem = victim.world.dropItemNaturally(victim.location, pureBottle)
+            val dropLoc = victim.location
+            val droppedItem = victim.world.dropItemNaturally(dropLoc, pureBottle)
             droppedItem.isInvulnerable = true
 
             if (plugin.config.getBoolean("settings.boss-bottle-announce", true)) {
-                Bukkit.broadcast(Component.text("The Most Infamous Player has fallen! The Pure Infamy Bottle has been dropped!", NamedTextColor.DARK_RED, TextDecoration.BOLD))
+                val msg = Component.text("The Most Infamous Player has fallen! Listen closely to the wind for its location...", NamedTextColor.DARK_RED, TextDecoration.BOLD)
+                Bukkit.getOnlinePlayers().filter { plugin.infamyManager.getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(msg) }
             }
             if (plugin.config.getBoolean("settings.boss-bottle-sound", true)) {
-                Bukkit.getOnlinePlayers().forEach { it.playSound(it.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f) }
+                Bukkit.getOnlinePlayers().forEach { p ->
+                    if (plugin.infamyManager.getSettings(p.uniqueId).globalSounds) {
+                        if (p.world == dropLoc.world) {
+                            p.playSound(dropLoc, Sound.ENTITY_ENDER_DRAGON_GROWL, 10000f, 1.0f)
+                        } else {
+                            p.playSound(p.location, Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f)
+                        }
+                    }
+                }
             }
         }
 
-        val loseAmount = when {
-            victimRep >= 21 -> 3
-            victimRep >= 11 -> 2
-            else -> 1
-        }
+        val loseAmount = when { victimRep >= 21 -> 3; victimRep >= 11 -> 2; else -> 1 }
         plugin.infamyManager.setReputation(victim, victimRep - loseAmount)
 
         if (killer != null && killer.uniqueId != victim.uniqueId) {
@@ -74,19 +78,15 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
             if (logs.size >= 3) {
                 awardPoints = 0
                 killer.sendMessage(Component.text("Anti-Farm Triggered! No points awarded.", NamedTextColor.YELLOW))
-            } else {
-                logs.add(now)
-            }
+            } else { logs.add(now) }
 
             if (awardPoints > 0) {
                 if (plugin.config.getBoolean("settings.drop-bottle-on-kill", true)) {
                     val infamyBottle = plugin.itemManager.createInfamyBottle(awardPoints, null, null, killIdStr)
-                    val droppedItem = victim.world.dropItemNaturally(victim.location, infamyBottle)
-                    droppedItem.isInvulnerable = true
+                    victim.world.dropItemNaturally(victim.location, infamyBottle).isInvulnerable = true
                 } else {
                     val killerRep = plugin.infamyManager.getRawReputation(killer)
-                    val newRep = (killerRep + awardPoints).coerceAtMost(if (killerRep >= 21) 21 else 20)
-                    plugin.infamyManager.setReputation(killer, newRep)
+                    plugin.infamyManager.setReputation(killer, (killerRep + awardPoints).coerceAtMost(if (killerRep >= 21) 21 else 20))
                 }
             }
         }

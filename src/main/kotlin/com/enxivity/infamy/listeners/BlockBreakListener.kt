@@ -1,4 +1,3 @@
-// Event listener for mining and fortune penalties. Connected to InfamySMP.kt.
 package com.enxivity.infamy.listeners
 
 import com.enxivity.infamy.InfamySMP
@@ -18,38 +17,24 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
 
         val hasFortune = tool.containsEnchantment(Enchantment.FORTUNE)
         val currentFortune = if (hasFortune) tool.getEnchantmentLevel(Enchantment.FORTUNE) else 0
+        var newFortune = currentFortune
 
-        var newFortuneLevel = currentFortune
+        // Honor Buffs
+        if (honor >= 12) newFortune += 3
+        else if (honor >= 9) newFortune += 2
+        else if (honor >= 3) newFortune += 1
 
-        // Infamy: Bad Fortune Penalties
-        if (plugin.hasInfamyAbility("bad_fortune", rep) && hasFortune) {
-            val maxAllowed = when {
-                rep >= 20 -> 0
-                rep >= 18 -> 1
-                else -> 2
-            }
-            if (currentFortune > maxAllowed) newFortuneLevel = maxAllowed
-        }
-        // Honor: Good Fortune Bonuses
-        else if (plugin.hasHonorAbility("good_fortune", honor)) {
-            val bonus = when {
-                honor >= 12 -> 3
-                honor >= 9 -> 2
-                else -> 1
-            }
-            newFortuneLevel = currentFortune + bonus
-        }
+        // Infamy Nerfs (Overrides)
+        if (rep >= 20) newFortune = 0
+        else if (rep >= 18) newFortune = newFortune.coerceAtMost(1)
+        else if (rep >= 15) newFortune = newFortune.coerceAtMost(2)
 
-        // Apply drop replacements only if the fortune level changed
-        if (newFortuneLevel != currentFortune) {
+        if (newFortune != currentFortune) {
             event.isDropItems = false
             val dummyTool = tool.clone()
 
-            if (newFortuneLevel <= 0) {
-                dummyTool.removeEnchantment(Enchantment.FORTUNE)
-            } else {
-                dummyTool.addUnsafeEnchantment(Enchantment.FORTUNE, newFortuneLevel)
-            }
+            if (newFortune <= 0) dummyTool.removeEnchantment(Enchantment.FORTUNE)
+            else dummyTool.addUnsafeEnchantment(Enchantment.FORTUNE, newFortune)
 
             val drops = event.block.getDrops(dummyTool, player)
             for (drop in drops) {
