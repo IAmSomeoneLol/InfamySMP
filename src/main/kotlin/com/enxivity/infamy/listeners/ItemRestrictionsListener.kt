@@ -57,6 +57,8 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         updateBottleStatus(item, "DROPPED")
         if (isBossBottle(item)) {
             event.itemDrop.isInvulnerable = true
+            event.itemDrop.setUnlimitedLifetime(true)
+
             val dropLoc = event.itemDrop.location
             val msg = Component.text("A Pure Infamy Bottle has been dropped into the world! Listen closely...", NamedTextColor.DARK_RED, TextDecoration.BOLD)
             Bukkit.getOnlinePlayers().filter { plugin.infamyManager.getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(msg) }
@@ -97,11 +99,11 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
 
     @EventHandler
     fun onItemDespawn(event: ItemDespawnEvent) {
-        updateBottleStatus(event.entity.itemStack, "LOST")
         if (isBossBottle(event.entity.itemStack)) {
-            val msg = Component.text("The Pure Infamy Bottle has been lost to the abyss! The server is softlocked until an admin intervenes.", NamedTextColor.DARK_RED, TextDecoration.BOLD)
-            Bukkit.getOnlinePlayers().filter { plugin.infamyManager.getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(msg) }
+            event.isCancelled = true
+            return
         }
+        updateBottleStatus(event.entity.itemStack, "LOST")
     }
 
     @EventHandler
@@ -111,7 +113,6 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
 
         if (title == "Registered Teams" || title == "Infamy Info Hub" || title == "Unlocked Abilities" || title == "Your Kill History" || title == "Server Kill History" || title == "Personal Settings") {
             event.isCancelled = true
-
             if (title == "Infamy Info Hub") {
                 when (event.currentItem?.type) {
                     Material.ENCHANTED_BOOK -> openAbilitiesGUI(player)
@@ -131,7 +132,6 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
                 }
                 openSettingsGUI(player)
             }
-
             if (event.currentItem?.type == Material.RED_STAINED_GLASS_PANE && event.currentItem?.itemMeta?.displayName()?.contains(Component.text("Hellcrush Active")) == true) {
                 event.isCancelled = true
             }
@@ -200,7 +200,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
     private fun isBossBottle(item: ItemStack?): Boolean = item?.itemMeta?.persistentDataContainer?.has(plugin.itemManager.bossKey, PersistentDataType.INTEGER) == true
     private fun isNormalKillBottle(item: ItemStack?): Boolean = item?.itemMeta?.persistentDataContainer?.has(plugin.itemManager.killIdKey, PersistentDataType.STRING) == true
 
-    private fun openSettingsGUI(player: Player) {
+    fun openSettingsGUI(player: Player) {
         val inv = Bukkit.createInventory(null, 27, Component.text("Personal Settings", NamedTextColor.DARK_GRAY))
         val settings = plugin.infamyManager.getSettings(player.uniqueId)
 
@@ -216,7 +216,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         player.openInventory(inv)
     }
 
-    private fun openAbilitiesGUI(player: Player) {
+    fun openAbilitiesGUI(player: Player) {
         val inv = Bukkit.createInventory(null, 54, Component.text("Unlocked Abilities", NamedTextColor.DARK_PURPLE))
         val rep = plugin.infamyManager.getRawReputation(player)
         val honor = plugin.infamyManager.getHonor(player)
@@ -239,22 +239,24 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
             inv.setItem(slot, item)
         }
 
-        setSlot(11, Material.BOOK, "Good Fortune", "Activation: Passive (Mine with Fortune)", listOf("Passively boosts your yields", "when mining ores with the", "Fortune enchantment."), 3, honor >= 3, true)
-        setSlot(12, Material.BOOK, "Hero of the Village", "Activation: Passive", listOf("Permanently grants you the", "Hero of the Village effect,", "giving you trade discounts."), 6, honor >= 6, true)
-        setSlot(14, Material.BOOK, "Halved Potions", "Activation: Passive (When hit by potion)", listOf("Automatically reduces the duration", "of all negative potion effects", "inflicted on you by 50%."), 9, honor >= 9, true)
-        setSlot(15, Material.ENCHANTED_BOOK, "Weapon Fatigue", "Activation: Passive (On hit)", listOf("Hitting enemies will passively", "apply an attack speed penalty,", "slowing their weapon cooldowns."), 12, honor >= 12, true)
+        // HONOR LORE
+        setSlot(11, Material.BOOK, "Good Fortune", "Activation: Passive (Mine with Fortune)", listOf("The Player due to their kind acts", "gains Good Fortune, raising their", "fortune effects based on level.", "", "Level 3: +1 Fortune Level", "Level 9: +2 Fortune Levels", "Level 12: +3 Fortune Levels"), 3, honor >= 3, true)
+        setSlot(12, Material.BOOK, "Hero of the Village", "Activation: Passive", listOf("The Player due to their kind acts", "Villagers appreciate them,", "giving them better trades.", "", "Level 6: HotV 1", "Level 9: HotV 2", "Level 12: HotV 3"), 6, honor >= 6, true)
+        setSlot(14, Material.BOOK, "Halved Potions", "Activation: Passive (All Potions)", listOf("Due to their good fortune they", "now struggle to take life,", "causing ALL their potion", "durations to be halved."), 9, honor >= 9, true)
+        setSlot(15, Material.ENCHANTED_BOOK, "Weapon Fatigue", "Activation: Passive (On hit)", listOf("Due to their good fortune they", "now struggle to take life,", "causing their weapon cooldowns", "to be higher (Sword becomes Axe)."), 12, honor >= 12, true)
 
-        setSlot(29, Material.BOOK, "Sword Block", "Activation: Right-Click with Sword", listOf("Right-click a sword to gain", "50% damage reduction for 5s.", "(1m Cooldown)"), 3, rep >= 3, false)
-        setSlot(30, Material.BOOK, "Shield Recovery", "Activation: Sneak + Right-Click with Shield", listOf("Sneak + Right-Click with a", "shield to instantly clear", "your shield stun cooldown.", "(25s CD)"), 6, rep >= 6, false)
-        setSlot(31, Material.BOOK, "Axe Pierce", "Activation: Attack blocking enemy with Axe", listOf("Your axe attacks will pierce", "through enemy shields, dealing", "2 hearts of true damage."), 9, rep >= 9, false)
-        setSlot(32, Material.BOOK, "Double Potions", "Activation: Passive (When using potion)", listOf("Doubles the duration of any", "positive potion effects", "applied to you."), 12, rep >= 12, false)
-        setSlot(33, Material.BOOK, "Wary Villagers", "Activation: Passive (When trading)", listOf("Villagers sense your infamy", "and will severely increase", "their trade prices out of fear."), 12, rep >= 12, false)
-
-        setSlot(38, Material.BOOK, "Passive Resistance", "Activation: Passive", listOf("Grants you a permanent", "Resistance I potion effect."), 15, rep >= 15, false)
-        setSlot(39, Material.BOOK, "Bad Fortune", "Activation: Passive (Overrides Fortune)", listOf("Severely reduces or entirely", "neutralizes your Fortune", "enchantment ore drops."), 15, rep >= 15, false)
-        setSlot(40, Material.BOOK, "Bleeding Edge", "Activation: Right-Click Diamond/Netherite Sword", listOf("Right-click a sword to prepare.", "Your next strike inflicts severe", "bleeding and Nausea. (1m CD)"), 18, rep >= 18, false)
-        setSlot(41, Material.BOOK, "Mace Slam", "Activation: Right-Click Mace", listOf("Right-click a Mace to launch", "forward, creating a massive", "shockwave upon landing. (10s CD)"), 20, rep >= 20, false)
-        setSlot(42, Material.ENCHANTED_BOOK, "Hellcrush", "Activation: Sneak + Right-Click (Empty Hand)", listOf("Sneak & right-click air to", "disable your equipped helmet for", "5 minutes of Strength III. (15m CD)"), 21, rep >= 21, false)
+        // INFAMY LORE
+        setSlot(28, Material.BOOK, "Sword Block", "Activation: Right-Click with Sword", listOf("The Player Receives the ability to", "block incoming damage with their sword,", "causing half damage to be received.", "(1m Cooldown)"), 3, rep >= 3, false)
+        setSlot(29, Material.BOOK, "Shield Recovery", "Activation: Sneak + Right-Click with Shield", listOf("The Player Receives the ability to", "pull their Shield back up after", "being broken.", "HOWEVER they take half a heart of", "damage. (25s CD)"), 6, rep >= 6, false)
+        setSlot(30, Material.BOOK, "Axe Pierce", "Activation: Attack blocking enemy with Axe", listOf("The Player Receives the ability to", "do Damage through Shields with an", "AXE while breaking it", "(Dealing 2 hearts)."), 9, rep >= 9, false)
+        setSlot(31, Material.BOOK, "Double Potions", "Activation: Passive (All Potions)", listOf("The Player Receives DOUBLE TIME", "for EVERY Potion they use."), 12, rep >= 12, false)
+        setSlot(32, Material.BOOK, "Wary Villagers", "Activation: Passive (When trading)", listOf("HOWEVER Villagers now are wary of you,", "giving worse trades.", "", "Level 12: Wary trades", "Level 15: Even worse trades", "Level 20: Max price hikes"), 12, rep >= 12, false)
+        setSlot(33, Material.BOOK, "Passive Resistance", "Activation: Passive", listOf("The Player Receives a PASSIVE", "Resistance 1 Boost."), 15, rep >= 15, false)
+        setSlot(34, Material.BOOK, "Bad Fortune", "Activation: Passive (Overrides Fortune)", listOf("HOWEVER With all the sins you have", "committed you now have BAD FORTUNE.", "", "Level 15: Max Fortune 2", "Level 18: Max Fortune 1", "Level 20: No Fortune benefits AT ALL"), 15, rep >= 15, false)
+        setSlot(39, Material.BOOK, "Bleeding Edge", "Activation: Right-Click Diamond/Netherite Sword", listOf("Using any sword above Diamond Tier", "causes the affected player to take", "Half a Heart of damage every SECOND", "lasting 5s (goes through armor &", "gives nausea when ended for 4s).", "(1m CD)"), 18, rep >= 18, false)
+        setSlot(40, Material.BOOK, "Constant Strength", "Activation: Passive", listOf("The Player Receives CONSTANT", "Strength 1 effect."), 20, rep >= 20, false)
+        setSlot(41, Material.BOOK, "Mace Slam", "Activation: Right-Click Mace", listOf("Allows the user to dash directionally", "by right clicking. Landing creates a", "shockwave dealing damage & knockup", "(caps at 6 hearts damage).", "(1m CD)"), 20, rep >= 20, false)
+        setSlot(42, Material.ENCHANTED_BOOK, "Hellcrush (Boss)", "Activation: Sneak + Right-Click (Empty Hand)", listOf("ONLY ONE PLAYER CAN RECEIVE", "Max team size: 2 Members.", "Constant Glowing.", "Activate Strength 3 for 5 Minutes,", "but lose the effects of your Helmet", "as if it was never there. (15m CD)"), 21, rep >= 21, false)
 
         player.openInventory(inv)
     }

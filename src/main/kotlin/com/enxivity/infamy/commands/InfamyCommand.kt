@@ -31,12 +31,14 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         if (args.isEmpty()) {
             if (sender is Player) handleInfoGui(sender)
-            else sender.sendMessage(Component.text("Usage: /infamy <info|team|level|withdraw|pureinfamybottle|history|cd|debugkill|add> ...", NamedTextColor.RED))
+            else sender.sendMessage(Component.text("Usage: /infamy <info|team|level|withdraw|bottle|history|cd|debugkill|add|top|settings|abilities> ...", NamedTextColor.RED))
             return true
         }
 
         when (args[0].lowercase()) {
             "info" -> handleInfoGui(sender)
+            "settings" -> if (sender is Player) plugin.itemRestrictionsListener.openSettingsGUI(sender)
+            "abilities" -> if (sender is Player) plugin.itemRestrictionsListener.openAbilitiesGUI(sender)
             "cd" -> if (sender is Player) handleCooldownsCommand(sender, args)
             "debugkill" -> handleDebugKillCommand(sender, args)
             "team" -> {
@@ -46,7 +48,8 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             "add" -> handleAddCommand(sender, args)
             "level" -> handleLevelCommand(sender, args)
             "withdraw" -> handleWithdrawCommand(sender, args)
-            "pureinfamybottle" -> handlePureBottleCommand(sender, args)
+            "bottle" -> handleBottleCommand(sender, args)
+            "top" -> handleTopRefreshCommand(sender, args)
             "history" -> {
                 if (args.size > 1 && args[1].lowercase() == "admin") handleAdminHistoryGui(sender)
                 else handleHistoryGui(sender)
@@ -59,26 +62,42 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): MutableList<String> {
         val completions = mutableListOf<String>()
         if (args.size == 1) {
-            val subs = mutableListOf("team", "level", "withdraw", "history", "info", "cd")
-            if (isAdmin(sender)) subs.addAll(listOf("add", "pureinfamybottle", "debugkill"))
+            val subs = mutableListOf("team", "level", "withdraw", "history", "info", "cd", "settings", "abilities")
+            if (isAdmin(sender)) subs.addAll(listOf("add", "bottle", "debugkill", "top"))
             completions.addAll(subs.filter { it.startsWith(args[0].lowercase()) })
         } else if (args.size == 2) {
             when (args[0].lowercase()) {
                 "team" -> completions.addAll(listOf("create", "disband", "invite", "accept", "decline", "leave", "kick", "list").filter { it.startsWith(args[1].lowercase()) })
-                "add", "pureinfamybottle", "level", "debugkill" -> if (isAdmin(sender)) completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[1].lowercase()) })
+                "add", "level", "debugkill" -> if (isAdmin(sender)) completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[1].lowercase()) })
+                "bottle" -> if (isAdmin(sender)) completions.addAll(listOf("honor", "infamy", "pure").filter { it.startsWith(args[1].lowercase()) })
+                "top" -> if (isAdmin(sender)) completions.add("refresh")
                 "history" -> if (isAdmin(sender) && "admin".startsWith(args[1].lowercase())) completions.add("admin")
                 "cd" -> if (isAdmin(sender)) completions.add("refresh")
             }
         } else if (args.size == 3) {
-            if (args[0].lowercase() == "add" && isAdmin(sender)) {
-                completions.addAll(listOf("infamy", "honor").filter { it.startsWith(args[2].lowercase()) })
-            } else if (args[0].lowercase() == "level" && isAdmin(sender)) {
-                completions.addAll(listOf("reset").filter { it.startsWith(args[2].lowercase()) })
+            if ((args[0].lowercase() == "add" || args[0].lowercase() == "bottle" || args[0].lowercase() == "top") && isAdmin(sender)) {
+                completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[2].lowercase()) })
             } else if (args[0].lowercase() == "debugkill" && isAdmin(sender)) {
                 completions.addAll(listOf("DROPPED", "PICKED_UP", "STASHED", "WITHDRAWN", "STOLEN", "LOST").filter { it.startsWith(args[2].uppercase()) })
             }
         }
         return completions
+    }
+
+    private fun handleTopRefreshCommand(sender: CommandSender, args: Array<out String>) {
+        if (!isAdmin(sender)) return sender.sendMessage(Component.text("You don't have permission.", NamedTextColor.RED))
+
+        if (args.size < 2 || args[1].lowercase() != "refresh") {
+            return sender.sendMessage(Component.text("Usage: /infamy top refresh [player]", NamedTextColor.RED))
+        }
+
+        plugin.infamyManager.refreshBossLock()
+
+        val msg = Component.text("The Most Infamous lock has been cleared by an admin! A Level 21 slot is now open.", NamedTextColor.DARK_RED, TextDecoration.BOLD)
+        Bukkit.getOnlinePlayers().forEach { p ->
+            if (plugin.infamyManager.getSettings(p.uniqueId).globalMessages) p.sendMessage(msg)
+        }
+        sender.sendMessage(Component.text("Successfully unlocked a Level 21 slot. Any existing Level 21 players will keep their rank.", NamedTextColor.GREEN))
     }
 
     private fun handleCooldownsCommand(player: Player, args: Array<out String>) {
@@ -87,15 +106,11 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         if (args.size > 1 && args[1].lowercase() == "refresh" && isAdmin(player)) {
             cl.swordBlockCooldowns.remove(player.uniqueId)
             cl.swordBlockActiveUntil.remove(player.uniqueId)
-
             cl.shieldAbilityCooldowns.remove(player.uniqueId)
             cl.activeBrokenShields.remove(player.uniqueId)
-
             cl.bleedCooldowns.remove(player.uniqueId)
             cl.activeBleedCharge.remove(player.uniqueId)
-
             cl.maceCooldowns.remove(player.uniqueId)
-
             cl.sacrificeCooldowns.remove(player.uniqueId)
             cl.activeSacrifices.remove(player.uniqueId)
 
@@ -119,7 +134,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         checkCD(cl.swordBlockCooldowns[player.uniqueId] ?: 0, 60000, "Sword Block")
         checkCD(cl.shieldAbilityCooldowns[player.uniqueId] ?: 0, 25000, "Shield Recovery")
         checkCD(cl.bleedCooldowns[player.uniqueId] ?: 0, 60000, "Bleeding Edge")
-        checkCD(cl.maceCooldowns[player.uniqueId] ?: 0, 10000, "Mace Slam")
+        checkCD(cl.maceCooldowns[player.uniqueId] ?: 0, 60000, "Mace Slam")
         checkCD(cl.sacrificeCooldowns[player.uniqueId] ?: 0, 900000, "Hellcrush")
 
         if (activeCDs.isEmpty()) {
@@ -391,12 +406,31 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         }
     }
 
-    private fun handlePureBottleCommand(sender: CommandSender, args: Array<out String>) {
+    private fun handleBottleCommand(sender: CommandSender, args: Array<out String>) {
         if (!isAdmin(sender)) return sender.sendMessage(Component.text("You don't have permission.", NamedTextColor.RED))
-        if (args.size < 2) return sender.sendMessage(Component.text("Usage: /infamy pureinfamybottle <player>", NamedTextColor.RED))
+        if (args.size < 2) return sender.sendMessage(Component.text("Usage: /infamy bottle <honor|infamy|pure> [player] [level] [count]", NamedTextColor.RED))
 
-        val target = Bukkit.getPlayer(args[1]) ?: return sender.sendMessage(Component.text("Player not found.", NamedTextColor.RED))
-        target.inventory.addItem(plugin.itemManager.createPureInfamyBottle("Admin Spawned", sender.name)).values.forEach { target.world.dropItemNaturally(target.location, it).isInvulnerable = true }
-        sender.sendMessage(Component.text("Gave 1 Pure Infamy Bottle to ${target.name}.", NamedTextColor.GREEN))
+        val type = args[1].lowercase()
+        if (type !in listOf("honor", "infamy", "pure")) return sender.sendMessage(Component.text("Type must be honor, infamy, or pure.", NamedTextColor.RED))
+
+        val targetName = if (args.size > 2) args[2] else sender.name
+        val target = Bukkit.getPlayer(targetName) ?: return sender.sendMessage(Component.text("Player '$targetName' not found.", NamedTextColor.RED))
+
+        val level = if (args.size > 3) args[3].toIntOrNull() ?: 1 else 1
+        val count = if (args.size > 4) args[4].toIntOrNull() ?: 1 else 1
+
+        var given = 0
+        for (i in 1..count) {
+            val bottle = when (type) {
+                "pure" -> plugin.itemManager.createPureInfamyBottle("Admin Spawned", sender.name)
+                "honor" -> plugin.itemManager.createHonorBottle()
+                // BUG FIX: Pass null for UUID to prevent parsing crash on admin bottles
+                else -> plugin.itemManager.createInfamyBottle(level, "Admin Spawned", null)
+            }
+            target.inventory.addItem(bottle).values.forEach { target.world.dropItemNaturally(target.location, it) }
+            given++
+        }
+
+        sender.sendMessage(Component.text("Given $given $type bottle(s) to ${target.name}.", NamedTextColor.GREEN))
     }
 }

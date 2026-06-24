@@ -18,13 +18,14 @@ data class PlayerSettings(
     var globalSounds: Boolean = true,
     var globalMessages: Boolean = true,
     var abilityMessages: Boolean = true,
-    var cooldownMessages: Boolean = false, // OFF by default so it doesn't spam!
+    var cooldownMessages: Boolean = false,
     var teamMessages: Boolean = true
 )
 
 class InfamyManager(private val plugin: InfamySMP) {
     private val reputationData = mutableMapOf<UUID, Int>()
     var currentBoss: UUID? = null
+    var forceUnlock21: Boolean = false // Special admin unlock flag
 
     val playerKills = mutableMapOf<UUID, Int>()
     val playerDeaths = mutableMapOf<UUID, Int>()
@@ -97,31 +98,45 @@ class InfamyManager(private val plugin: InfamySMP) {
         return plugin.config.getString(configPath, "&a[Normal]")!!
     }
 
+    fun refreshBossLock() {
+        forceUnlock21 = true
+    }
+
+    private fun enforceBossTeamSize(player: Player) {
+        val team = plugin.teamManager.getTeam(player.uniqueId)
+        if (team != null && team.members.size > 2) {
+            val membersToKeep = mutableListOf(team.leader)
+            val otherMembers = team.members.filter { it != team.leader }
+            if (otherMembers.isNotEmpty()) membersToKeep.add(otherMembers.first())
+
+            val toKick = team.members.filter { !membersToKeep.contains(it) }
+            toKick.forEach { memberId ->
+                team.members.remove(memberId)
+                plugin.teamManager.playerTeams.remove(memberId)
+                Bukkit.getPlayer(memberId)?.sendMessage(Component.text("You were kicked from the team because the Boss can only have 1 teammate!", net.kyori.adventure.text.format.NamedTextColor.RED))
+            }
+            player.sendMessage(Component.text("Your team was too large for a Boss! Extra members have been removed.", net.kyori.adventure.text.format.NamedTextColor.DARK_RED))
+        }
+    }
+
     fun setReputation(player: Player, amount: Int) {
         val finalAmount = amount.coerceIn(-12, 21)
 
         if (finalAmount >= 21) {
             if (currentBoss != null && currentBoss != player.uniqueId) {
-                player.sendMessage(Component.text("You reached 21 Infamy, but the title is held by someone else!", net.kyori.adventure.text.format.NamedTextColor.RED))
-                reputationData[player.uniqueId] = 20
+                if (forceUnlock21) {
+                    reputationData[player.uniqueId] = 21
+                    forceUnlock21 = false // The slot locks again instantly!
+                    Bukkit.getOnlinePlayers().filter { getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(Component.text("${player.name} has ascended to Level 21!", net.kyori.adventure.text.format.NamedTextColor.DARK_RED)) }
+                    enforceBossTeamSize(player)
+                } else {
+                    player.sendMessage(Component.text("You reached 21 Infamy, but the title is locked by the current Boss!", net.kyori.adventure.text.format.NamedTextColor.RED))
+                    reputationData[player.uniqueId] = 20
+                }
             } else if (currentBoss != player.uniqueId) {
                 currentBoss = player.uniqueId
                 Bukkit.getOnlinePlayers().filter { getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(Component.text("${player.name} has become the Most Infamous Player!", net.kyori.adventure.text.format.NamedTextColor.DARK_RED)) }
-
-                val team = plugin.teamManager.getTeam(player.uniqueId)
-                if (team != null && team.members.size > 2) {
-                    val membersToKeep = mutableListOf(team.leader)
-                    val otherMembers = team.members.filter { it != team.leader }
-                    if (otherMembers.isNotEmpty()) membersToKeep.add(otherMembers.first())
-
-                    val toKick = team.members.filter { !membersToKeep.contains(it) }
-                    toKick.forEach { memberId ->
-                        team.members.remove(memberId)
-                        plugin.teamManager.playerTeams.remove(memberId)
-                        Bukkit.getPlayer(memberId)?.sendMessage(Component.text("You were kicked from the team because the Boss can only have 1 teammate!", net.kyori.adventure.text.format.NamedTextColor.RED))
-                    }
-                    player.sendMessage(Component.text("Your team was too large for a Boss! Extra members have been removed.", net.kyori.adventure.text.format.NamedTextColor.DARK_RED))
-                }
+                enforceBossTeamSize(player)
                 reputationData[player.uniqueId] = 21
             } else {
                 reputationData[player.uniqueId] = 21
@@ -137,6 +152,7 @@ class InfamyManager(private val plugin: InfamySMP) {
     }
 
     fun resetReputation(player: Player) = setReputation(player, 0)
+
     fun updateTabList(player: Player) {
         val rawPrefix = getPrefixText(getRawReputation(player))
         val prefixComponent = LegacyComponentSerializer.legacyAmpersand().deserialize(rawPrefix)

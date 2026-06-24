@@ -17,6 +17,18 @@ settings:
   allow-withdraw: true
   boss-bottle-announce: true
   boss-bottle-sound: true
+  show-ability-particles: true # Toggles all combat trails, lava splashes, and shockwaves
+  show-consumption-beacon: true # Toggles the spiral beacon effect when drinking custom bottles
+  bottle-particles:
+    infamy:
+      enabled: true
+      particle: "END_ROD"
+    honor:
+      enabled: true
+      particle: "GLOW"
+    pure:
+      enabled: true
+      particle: "DUST" # DUST is the 1.21 name for Redstone particles
 
 custom-model-data:
   infamy_bottle: 10001

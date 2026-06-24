@@ -36,7 +36,7 @@ class HonorDeedListener(private val plugin: InfamySMP) : Listener {
         }
     }
 
-    // Injects the trade the moment a Wandering Trader spawns into the world
+
     @EventHandler
     fun onTraderSpawn(event: CreatureSpawnEvent) {
         val entity = event.entity
@@ -45,7 +45,7 @@ class HonorDeedListener(private val plugin: InfamySMP) : Listener {
         }
     }
 
-    // Fallback: Injects the trade if a player interacts with a trader that spawned before the plugin update
+
     @EventHandler
     fun onTraderInteract(event: PlayerInteractEntityEvent) {
         val entity = event.rightClicked
@@ -55,14 +55,14 @@ class HonorDeedListener(private val plugin: InfamySMP) : Listener {
     }
 
     private fun injectHonorTrade(trader: WanderingTrader) {
-        // Check if this trader already has the Honor Bottle trade so we don't duplicate it
+
         val hasHonorTrade = trader.recipes.any { recipe ->
             plugin.itemManager.isCustomBottle(recipe.result) &&
                     recipe.result.itemMeta?.persistentDataContainer?.has(plugin.itemManager.honorKey, PersistentDataType.INTEGER) == true
         }
 
         if (!hasHonorTrade) {
-            // Costs 64 Emeralds. Max uses is 1 (they can only buy it once from this trader)
+
             val honorRecipe = MerchantRecipe(plugin.itemManager.createHonorBottle(), 1)
             honorRecipe.addIngredient(ItemStack(Material.EMERALD, 64))
 

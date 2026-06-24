@@ -20,6 +20,7 @@ class InfamySMP : JavaPlugin(), Listener {
     lateinit var itemManager: ItemManager
     lateinit var teamManager: TeamManager
     lateinit var combatListener: CombatListener
+    lateinit var itemRestrictionsListener: ItemRestrictionsListener
 
     override fun onEnable() {
         saveDefaultConfig()
@@ -33,6 +34,7 @@ class InfamySMP : JavaPlugin(), Listener {
         teamManager.loadData()
 
         combatListener = CombatListener(this)
+        itemRestrictionsListener = ItemRestrictionsListener(this)
 
         server.pluginManager.registerEvents(this, this)
         server.pluginManager.registerEvents(DeathListener(this), this)
@@ -41,7 +43,7 @@ class InfamySMP : JavaPlugin(), Listener {
         server.pluginManager.registerEvents(PerkListener(this), this)
         server.pluginManager.registerEvents(BlockBreakListener(this), this)
         server.pluginManager.registerEvents(HonorDeedListener(this), this)
-        server.pluginManager.registerEvents(ItemRestrictionsListener(this), this)
+        server.pluginManager.registerEvents(itemRestrictionsListener, this)
 
         val infamyCmd = InfamyCommand(this)
         getCommand("infamy")?.setExecutor(infamyCmd)
@@ -57,20 +59,13 @@ class InfamySMP : JavaPlugin(), Listener {
         val lastHonorLevels = mutableMapOf<java.util.UUID, Int>()
 
         server.scheduler.runTaskTimer(this, Runnable {
-
-            // ==========================================
-            // PLAYER ABILITY LOOP
-            // ==========================================
             for (player in server.onlinePlayers) {
                 val rep = infamyManager.getRawReputation(player)
                 val honor = infamyManager.getHonor(player)
 
                 if (rep >= 15) player.addPotionEffect(PotionEffect(PotionEffectType.RESISTANCE, 60, 0, true, false, false))
-
-                // Level 21: Constant Glowing
                 if (rep >= 21) player.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, 60, 0, true, false, false))
 
-                // Level 20+: Constant Strength 1 (Unless Hellcrush applies Str 3)
                 if (rep >= 20) {
                     if (combatListener.activeSacrifices.contains(player.uniqueId)) {
                         player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 2, true, false, false))
@@ -79,7 +74,6 @@ class InfamySMP : JavaPlugin(), Listener {
                     }
                 }
 
-                // HELLCRUSH DYNAMIC STAT NEGATOR LOOP
                 val armorAttr = player.getAttribute(Attribute.ARMOR)
                 val toughAttr = player.getAttribute(Attribute.ARMOR_TOUGHNESS)
 
@@ -96,10 +90,8 @@ class InfamySMP : JavaPlugin(), Listener {
                             else -> {}
                         }
                     }
-
                     armorAttr?.modifiers?.find { it.key == hellcrushArmorKey }?.let { armorAttr.removeModifier(it) }
                     toughAttr?.modifiers?.find { it.key == hellcrushToughKey }?.let { toughAttr.removeModifier(it) }
-
                     if (aVal > 0) armorAttr?.addModifier(AttributeModifier(hellcrushArmorKey, -aVal, AttributeModifier.Operation.ADD_NUMBER))
                     if (tVal > 0) toughAttr?.addModifier(AttributeModifier(hellcrushToughKey, -tVal, AttributeModifier.Operation.ADD_NUMBER))
                 } else {
@@ -114,56 +106,57 @@ class InfamySMP : JavaPlugin(), Listener {
 
                 val currentItem = player.inventory.itemInMainHand.type
                 val uuid = player.uniqueId
-
                 if (lastHeldItems[uuid] != currentItem || lastHonorLevels[uuid] != honor) {
                     lastHeldItems[uuid] = currentItem
                     lastHonorLevels[uuid] = honor
-
                     val attackSpeedAttr = player.getAttribute(Attribute.ATTACK_SPEED)
                     if (attackSpeedAttr != null) {
                         attackSpeedAttr.modifiers.find { it.key == penaltyKey }?.let { attackSpeedAttr.removeModifier(it) }
-
                         if (honor >= 12) {
                             val penalty = when {
                                 currentItem.name.endsWith("_SWORD") -> -0.6
                                 currentItem.name.endsWith("_AXE") -> -0.4
                                 else -> 0.0
                             }
-                            if (penalty < 0) {
-                                val mod = AttributeModifier(penaltyKey, penalty, AttributeModifier.Operation.ADD_NUMBER)
-                                attackSpeedAttr.addModifier(mod)
-                            }
+                            if (penalty < 0) attackSpeedAttr.addModifier(AttributeModifier(penaltyKey, penalty, AttributeModifier.Operation.ADD_NUMBER))
                         }
                     }
                 }
             }
 
-            // ==========================================
-            // BOTTLE ITEM PARTICLES LOOP
-            // ==========================================
+            val pureEnabled = config.getBoolean("settings.bottle-particles.pure.enabled", true)
+            val pureParticleStr = config.getString("settings.bottle-particles.pure.particle", "DUST")?.uppercase() ?: "DUST"
+
+            val infamyEnabled = config.getBoolean("settings.bottle-particles.infamy.enabled", true)
+            val infamyParticleStr = config.getString("settings.bottle-particles.infamy.particle", "END_ROD")?.uppercase() ?: "END_ROD"
+
+            val honorEnabled = config.getBoolean("settings.bottle-particles.honor.enabled", true)
+            val honorParticleStr = config.getString("settings.bottle-particles.honor.particle", "GLOW")?.uppercase() ?: "GLOW"
+
             for (world in server.worlds) {
-                // Highly optimized: Only checks actual dropped items, ignores all other entities
                 for (item in world.getEntitiesByClass(org.bukkit.entity.Item::class.java)) {
                     val pdc = item.itemStack.itemMeta?.persistentDataContainer ?: continue
 
-                    // Level 21 Pure Infamy Bottle: Redstone Dust (Red)
-                    if (pdc.has(itemManager.bossKey, org.bukkit.persistence.PersistentDataType.INTEGER)) {
-                        val redDust = org.bukkit.Particle.DustOptions(org.bukkit.Color.RED, 1.2f)
-                        world.spawnParticle(org.bukkit.Particle.DUST, item.location.add(0.0, 0.4, 0.0), 3, 0.15, 0.15, 0.15, 0.0, redDust)
-                    }
-                    // Normal Infamy Bottle: End Rod (Glitter)
-                    else if (pdc.has(itemManager.infamyKey, org.bukkit.persistence.PersistentDataType.INTEGER)) {
-                        world.spawnParticle(org.bukkit.Particle.END_ROD, item.location.add(0.0, 0.4, 0.0), 2, 0.15, 0.15, 0.15, 0.02)
-                    }
-                    // Honor Bottle: Glow Squid Magic (Cyan/Blue Magic Stars)
-                    // Change GLOW_SQUID_MAGIC to SOUL_FIRE_FLAME or NAUTILUS if you want a different blue!
-                    else if (pdc.has(itemManager.honorKey, org.bukkit.persistence.PersistentDataType.INTEGER)) {
-                        world.spawnParticle(org.bukkit.Particle.GLOW, item.location.add(0.0, 0.4, 0.0), 3, 0.15, 0.15, 0.15, 0.02)
-                    }
+                    try {
+                        if (pureEnabled && pdc.has(itemManager.bossKey, org.bukkit.persistence.PersistentDataType.INTEGER)) {
+                            val p = org.bukkit.Particle.valueOf(pureParticleStr)
+                            if (p == org.bukkit.Particle.DUST) world.spawnParticle(p, item.location.add(0.0, 0.4, 0.0), 3, 0.15, 0.15, 0.15, 0.0, org.bukkit.Particle.DustOptions(org.bukkit.Color.RED, 1.2f))
+                            else world.spawnParticle(p, item.location.add(0.0, 0.4, 0.0), 3, 0.15, 0.15, 0.15, 0.02)
+                        }
+                        else if (infamyEnabled && pdc.has(itemManager.infamyKey, org.bukkit.persistence.PersistentDataType.INTEGER)) {
+                            val p = org.bukkit.Particle.valueOf(infamyParticleStr)
+                            if (p == org.bukkit.Particle.DUST) world.spawnParticle(p, item.location.add(0.0, 0.4, 0.0), 2, 0.15, 0.15, 0.15, 0.0, org.bukkit.Particle.DustOptions(org.bukkit.Color.RED, 1.2f))
+                            else world.spawnParticle(p, item.location.add(0.0, 0.4, 0.0), 2, 0.15, 0.15, 0.15, 0.02)
+                        }
+                        else if (honorEnabled && pdc.has(itemManager.honorKey, org.bukkit.persistence.PersistentDataType.INTEGER)) {
+                            val p = org.bukkit.Particle.valueOf(honorParticleStr)
+                            if (p == org.bukkit.Particle.DUST) world.spawnParticle(p, item.location.add(0.0, 0.4, 0.0), 3, 0.15, 0.15, 0.15, 0.0, org.bukkit.Particle.DustOptions(org.bukkit.Color.AQUA, 1.2f))
+                            else world.spawnParticle(p, item.location.add(0.0, 0.4, 0.0), 3, 0.15, 0.15, 0.15, 0.02)
+                        }
+                    } catch (e: Exception) { }
                 }
             }
-
-        }, 0L, 10L) // Runs twice a second
+        }, 0L, 10L)
     }
 
     override fun onDisable() {
