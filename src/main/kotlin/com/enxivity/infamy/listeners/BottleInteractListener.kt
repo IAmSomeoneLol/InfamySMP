@@ -66,6 +66,13 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
 
         if (pdc.has(plugin.itemManager.honorKey, PersistentDataType.INTEGER)) {
             event.isCancelled = true
+
+            // BUG FIX: Prevents Bosses from softlocking the server by drinking Honor Bottles
+            if (currentRep >= 21) {
+                player.sendMessage(Component.text("You cannot consume Honor Bottles while holding the Most Infamous title! Withdraw your pure bottle or die to lose it first.", NamedTextColor.RED))
+                return
+            }
+
             plugin.infamyManager.setReputation(player, currentRep - 1)
             player.sendMessage(Component.text("You consumed an Honor Bottle!", NamedTextColor.AQUA))
             plugin.server.scheduler.runTask(plugin, Runnable { player.inventory.getItem(event.hand)?.subtract(1) })

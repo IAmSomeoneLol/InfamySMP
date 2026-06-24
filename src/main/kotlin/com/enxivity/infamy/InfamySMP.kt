@@ -57,6 +57,10 @@ class InfamySMP : JavaPlugin(), Listener {
         val lastHonorLevels = mutableMapOf<java.util.UUID, Int>()
 
         server.scheduler.runTaskTimer(this, Runnable {
+
+            // ==========================================
+            // PLAYER ABILITY LOOP
+            // ==========================================
             for (player in server.onlinePlayers) {
                 val rep = infamyManager.getRawReputation(player)
                 val honor = infamyManager.getHonor(player)
@@ -133,7 +137,33 @@ class InfamySMP : JavaPlugin(), Listener {
                     }
                 }
             }
-        }, 0L, 10L)
+
+            // ==========================================
+            // BOTTLE ITEM PARTICLES LOOP
+            // ==========================================
+            for (world in server.worlds) {
+                // Highly optimized: Only checks actual dropped items, ignores all other entities
+                for (item in world.getEntitiesByClass(org.bukkit.entity.Item::class.java)) {
+                    val pdc = item.itemStack.itemMeta?.persistentDataContainer ?: continue
+
+                    // Level 21 Pure Infamy Bottle: Redstone Dust (Red)
+                    if (pdc.has(itemManager.bossKey, org.bukkit.persistence.PersistentDataType.INTEGER)) {
+                        val redDust = org.bukkit.Particle.DustOptions(org.bukkit.Color.RED, 1.2f)
+                        world.spawnParticle(org.bukkit.Particle.DUST, item.location.add(0.0, 0.4, 0.0), 3, 0.15, 0.15, 0.15, 0.0, redDust)
+                    }
+                    // Normal Infamy Bottle: End Rod (Glitter)
+                    else if (pdc.has(itemManager.infamyKey, org.bukkit.persistence.PersistentDataType.INTEGER)) {
+                        world.spawnParticle(org.bukkit.Particle.END_ROD, item.location.add(0.0, 0.4, 0.0), 2, 0.15, 0.15, 0.15, 0.02)
+                    }
+                    // Honor Bottle: Glow Squid Magic (Cyan/Blue Magic Stars)
+                    // Change GLOW_SQUID_MAGIC to SOUL_FIRE_FLAME or NAUTILUS if you want a different blue!
+                    else if (pdc.has(itemManager.honorKey, org.bukkit.persistence.PersistentDataType.INTEGER)) {
+                        world.spawnParticle(org.bukkit.Particle.GLOW, item.location.add(0.0, 0.4, 0.0), 3, 0.15, 0.15, 0.15, 0.02)
+                    }
+                }
+            }
+
+        }, 0L, 10L) // Runs twice a second
     }
 
     override fun onDisable() {

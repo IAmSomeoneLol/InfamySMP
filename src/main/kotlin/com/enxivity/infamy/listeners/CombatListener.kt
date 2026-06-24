@@ -2,6 +2,7 @@
 package com.enxivity.infamy.listeners
 
 import com.enxivity.infamy.InfamySMP
+import io.papermc.paper.event.player.PlayerShieldDisableEvent
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Material
@@ -60,28 +61,56 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
     @EventHandler
     fun onCombatInteract(event: PlayerInteractEvent) {
-        // EXPLOIT FIX: Prevent double-firing from the off-hand
-        if (event.hand != org.bukkit.inventory.EquipmentSlot.HAND) return
-
-        val action = event.action
-        if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) return
+        if (event.hand == org.bukkit.inventory.EquipmentSlot.OFF_HAND) return
 
         val player = event.player
         val rep = plugin.infamyManager.getRawReputation(player)
+        val action = event.action
+
         val mainItem = player.inventory.itemInMainHand
         val offItem = player.inventory.itemInOffHand
 
-        // LEVEL 6: Shield Recovery (Manual Activation when Shield is disabled on vanilla cooldown)
-        if (player.isSneaking && rep >= 6 && (mainItem.type == Material.SHIELD || offItem.type == Material.SHIELD)) {
+        // LEVEL 21: HELLCRUSH
+        if (mainItem.type.isAir && player.isSneaking && rep >= 21) {
+            if (action == Action.RIGHT_CLICK_BLOCK || action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
+                val now = System.currentTimeMillis()
+                val lastUsed = sacrificeCooldowns[player.uniqueId] ?: 0
+
+                if (now - lastUsed > 900000) {
+                    sacrificeCooldowns[player.uniqueId] = now
+                    activeSacrifices.add(player.uniqueId)
+
+                    msg(player, "Hellcrush Activated! Helmet stats neutralized for 5 minutes of Strength III.", NamedTextColor.DARK_RED)
+                    player.world.playSound(player.location, Sound.ENTITY_WITHER_SPAWN, 1.2f, 0.7f)
+
+                    plugin.server.scheduler.runTaskLater(plugin, Runnable {
+                        if (activeSacrifices.contains(player.uniqueId)) {
+                            activeSacrifices.remove(player.uniqueId)
+                            if (player.isOnline) {
+                                restoreHelmet(player)
+                                msg(player, "Your Hellcrush fury has faded. Helmet stats restored.", NamedTextColor.GRAY)
+                            }
+                        }
+                    }, 6000L)
+                } else {
+                    val remaining = (900000 - (now - lastUsed)) / 1000 / 60
+                    msgCD(player, "Hellcrush is on cooldown! ($remaining mins left)", NamedTextColor.RED)
+                }
+            }
+        }
+
+        if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) return
+
+        // LEVEL 6: SHIELD RECOVERY
+        if ((mainItem.type == Material.SHIELD || offItem.type == Material.SHIELD) && player.isSneaking && rep >= 6) {
             if (player.hasCooldown(Material.SHIELD)) {
                 val now = System.currentTimeMillis()
                 val lastUsed = shieldAbilityCooldowns[player.uniqueId] ?: 0
 
                 if (now - lastUsed > 25000) {
                     shieldAbilityCooldowns[player.uniqueId] = now
-                    player.setCooldown(Material.SHIELD, 0) // Strips off vanilla disable timer completely
+                    player.setCooldown(Material.SHIELD, 0)
 
-                    // Deduct half a heart safely (1 HP)
                     player.health = (player.health - 1.0).coerceAtLeast(0.0)
 
                     msg(player, "Shield recovered instantly! (-0.5 Hearts)", NamedTextColor.GREEN)
@@ -93,8 +122,10 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             }
         }
 
-        // LEVEL 3: Sword Block (1m CD, 5s Execution Protection)
-        if (!mainItem.isEmpty && mainItem.type.name.endsWith("_SWORD") && rep >= 3) {
+        val item = event.item ?: return
+
+        // LEVEL 3: SWORD BLOCK
+        if (item.type.name.endsWith("_SWORD") && rep >= 3) {
             val now = System.currentTimeMillis()
             val lastUsed = swordBlockCooldowns[player.uniqueId] ?: 0
             if (now - lastUsed > 60000) {
@@ -107,8 +138,8 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             }
         }
 
-        // LEVEL 18: Bleeding Edge Prime (Diamond and Netherite Swords Supported)
-        if (!mainItem.isEmpty && (mainItem.type == Material.DIAMOND_SWORD || mainItem.type == Material.NETHERITE_SWORD) && rep >= 18) {
+        // LEVEL 18: BLEEDING EDGE PRIME
+        if ((item.type == Material.DIAMOND_SWORD || item.type == Material.NETHERITE_SWORD) && rep >= 18) {
             val now = System.currentTimeMillis()
             val lastUsed = bleedCooldowns[player.uniqueId] ?: 0
 
@@ -129,8 +160,8 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             }
         }
 
-        // LEVEL 20: Mace Slam
-        if (!mainItem.isEmpty && mainItem.type == Material.MACE && rep >= 20) {
+        // LEVEL 20: MACE SLAM
+        if (item.type == Material.MACE && rep >= 20) {
             val now = System.currentTimeMillis()
             val lastUsed = maceCooldowns[player.uniqueId] ?: 0
 
@@ -143,7 +174,8 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 object : BukkitRunnable() {
                     override fun run() {
                         if (player.isDead || !player.isOnline) { cancel(); return }
-                        if (player.velocity.y == 0.0 || player.isOnGround) {
+                        val blockBelow = player.location.clone().subtract(0.0, 0.1, 0.0).block
+                        if (player.velocity.y <= 0.0 && blockBelow.type.isSolid) {
                             createMaceShockwave(player, startHeight)
                             cancel()
                         }
@@ -151,33 +183,6 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 }.runTaskTimer(plugin, 10L, 1L)
             } else {
                 msgCD(player, "Mace Slam on cooldown! (${(10000 - (now - lastUsed))/1000}s)", NamedTextColor.RED)
-            }
-        }
-
-        // LEVEL 21: Hellcrush
-        if (rep >= 21 && player.isSneaking && mainItem.isEmpty) {
-            val now = System.currentTimeMillis()
-            val lastUsed = sacrificeCooldowns[player.uniqueId] ?: 0
-
-            if (now - lastUsed > 900000) {
-                sacrificeCooldowns[player.uniqueId] = now
-                activeSacrifices.add(player.uniqueId)
-
-                msg(player, "Hellcrush Activated! Helmet stats neutralized for 5 minutes of Strength III.", NamedTextColor.DARK_RED)
-                player.world.playSound(player.location, Sound.ENTITY_WITHER_SPAWN, 1.2f, 0.7f)
-
-                plugin.server.scheduler.runTaskLater(plugin, Runnable {
-                    if (activeSacrifices.contains(player.uniqueId)) {
-                        activeSacrifices.remove(player.uniqueId)
-                        if (player.isOnline) {
-                            restoreHelmet(player)
-                            msg(player, "Your Hellcrush fury has faded. Helmet stats restored.", NamedTextColor.GRAY)
-                        }
-                    }
-                }, 6000L)
-            } else {
-                val remaining = (900000 - (now - lastUsed)) / 1000 / 60
-                msgCD(player, "Hellcrush is on cooldown! ($remaining mins left)", NamedTextColor.RED)
             }
         }
     }
@@ -204,67 +209,77 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
     @EventHandler
     fun onPlayerTakeDamage(event: EntityDamageByEntityEvent) {
-        val victim = event.entity
-        if (victim !is Player) return
+        // Victim can now be ANY living entity (Players, Villagers, Zombies, etc.)
+        val victim = event.entity as? LivingEntity ?: return
         val now = System.currentTimeMillis()
-        val victimRep = plugin.infamyManager.getRawReputation(victim)
 
-        if (victimRep >= 3) {
-            val expires = swordBlockActiveUntil[victim.uniqueId] ?: 0
-            if (now <= expires && victim.inventory.itemInMainHand.type.name.endsWith("_SWORD")) {
-                event.damage *= 0.5
-                victim.world.playSound(victim.location, Sound.BLOCK_ANVIL_LAND, 0.5f, 1.5f)
-            }
-        }
+        // Defensive Abilities (Only triggers if the victim is actually a player)
+        if (victim is Player) {
+            val victimRep = plugin.infamyManager.getRawReputation(victim)
 
-        if (activeSacrifices.contains(victim.uniqueId)) {
-            val helmet = victim.inventory.helmet
-            if (helmet != null) {
-                val protLevel = helmet.getEnchantmentLevel(Enchantment.PROTECTION)
-                if (protLevel > 0) {
-                    val reduction = (protLevel * 0.04).coerceAtMost(0.80)
-                    event.damage *= (1.0 / (1.0 - reduction))
+            if (victimRep >= 3) {
+                val expires = swordBlockActiveUntil[victim.uniqueId] ?: 0
+                if (now <= expires && victim.inventory.itemInMainHand.type.name.endsWith("_SWORD")) {
+                    event.damage *= 0.5
+                    victim.world.playSound(victim.location, Sound.BLOCK_ANVIL_LAND, 0.5f, 1.5f)
                 }
             }
-        }
 
-        if (event.damager is Player) {
-            val attacker = event.damager as Player
-            val attackerRep = plugin.infamyManager.getRawReputation(attacker)
-
-            if (attackerRep >= 9 && victim.isBlocking && attacker.inventory.itemInMainHand.type.name.endsWith("_AXE")) {
-                victim.health = (victim.health - 4.0).coerceAtLeast(0.0)
-            }
-
-            if (activeBleedCharge.containsKey(attacker.uniqueId)) {
-                activeBleedCharge.remove(attacker.uniqueId)
-                msg(attacker, "Bleeding Edge strike landed!", NamedTextColor.DARK_RED)
-
-                var ticks = 0
-                val bleedTask = object : BukkitRunnable() {
-                    override fun run() {
-                        if (victim.isDead || !victim.isOnline) { cancel(); return }
-
-                        if (ticks < 5) {
-                            // Inflict exactly 1 HP (half heart) per second, ignoring armor & enchants
-                            val targetHealth = (victim.health - 1.0).coerceAtLeast(0.0)
-                            if (targetHealth <= 0.0) {
-                                victim.damage(100.0, attacker) // Forces flawless death credit to attacker
-                            } else {
-                                victim.health = targetHealth
-                                victim.playEffect(org.bukkit.EntityEffect.HURT)
-                            }
-                            victim.world.spawnParticle(Particle.DAMAGE_INDICATOR, victim.location.add(0.0, 1.0, 0.0), 5)
-                            ticks++
-                        } else {
-                            // Bleeding 5s ends -> Nausea starts immediately for 4 seconds (80 ticks)
-                            victim.addPotionEffect(PotionEffect(PotionEffectType.NAUSEA, 80, 0))
-                            cancel()
-                        }
+            if (activeSacrifices.contains(victim.uniqueId)) {
+                val helmet = victim.inventory.helmet
+                if (helmet != null) {
+                    val protLevel = helmet.getEnchantmentLevel(Enchantment.PROTECTION)
+                    if (protLevel > 0) {
+                        val reduction = (protLevel * 0.04).coerceAtMost(0.80)
+                        event.damage *= (1.0 / (1.0 - reduction))
                     }
                 }
-                bleedTask.runTaskTimer(plugin, 20L, 20L)
             }
+
+            if (activeBrokenShields.contains(victim.uniqueId) && victim.isBlocking) {
+                victim.health = (victim.health - 1.0).coerceAtLeast(0.0)
+            }
+        }
+
+        // Offensive Abilities (Only triggers if the attacker is a player)
+        val attacker = event.damager as? Player ?: return
+        val attackerRep = plugin.infamyManager.getRawReputation(attacker)
+
+        // Axe Pierce (Checks if the victim is a player that is currently blocking)
+        if (attackerRep >= 9 && victim is Player && victim.isBlocking && attacker.inventory.itemInMainHand.type.name.endsWith("_AXE")) {
+            victim.health = (victim.health - 4.0).coerceAtLeast(0.0)
+        }
+
+        // Bleeding Edge Execution (Triggers on ANY LivingEntity struck)
+        if (activeBleedCharge.containsKey(attacker.uniqueId)) {
+            activeBleedCharge.remove(attacker.uniqueId)
+            msg(attacker, "Bleeding Edge strike landed!", NamedTextColor.DARK_RED)
+
+            var ticks = 0
+            val bleedTask = object : BukkitRunnable() {
+                override fun run() {
+                    // Uses isValid to stop loop if a mob despawns or player logs out
+                    if (victim.isDead || !victim.isValid) { cancel(); return }
+
+                    if (ticks < 5) {
+                        // Inflict exactly 1 HP (half heart) per second, ignoring armor & enchants
+                        val targetHealth = (victim.health - 1.0).coerceAtLeast(0.0)
+                        if (targetHealth <= 0.0) {
+                            victim.damage(100.0, attacker) // Forces flawless death credit to attacker
+                        } else {
+                            victim.health = targetHealth
+                            victim.playHurtAnimation(0f)
+                        }
+                        victim.world.spawnParticle(Particle.DAMAGE_INDICATOR, victim.location.add(0.0, 1.0, 0.0), 5)
+                        ticks++
+                    } else {
+                        // Bleeding 5s ends -> Nausea starts immediately for 4 seconds (80 ticks)
+                        victim.addPotionEffect(PotionEffect(PotionEffectType.NAUSEA, 80, 0))
+                        cancel()
+                    }
+                }
+            }
+            bleedTask.runTaskTimer(plugin, 20L, 20L)
         }
     }
 }
