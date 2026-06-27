@@ -129,6 +129,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
                     13 -> settings.abilityMessages = !settings.abilityMessages
                     14 -> settings.cooldownMessages = !settings.cooldownMessages
                     15 -> settings.teamMessages = !settings.teamMessages
+                    16 -> settings.abilityMessagesInChat = !settings.abilityMessagesInChat
                 }
                 openSettingsGUI(player)
             }
@@ -212,7 +213,10 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         val s4 = getGlass(settings.cooldownMessages).apply { itemMeta = itemMeta.apply { displayName(Component.text("Cooldown Warnings", NamedTextColor.GOLD)); lore(listOf(Component.text(if (settings.cooldownMessages) "Enabled" else "Disabled", if (settings.cooldownMessages) NamedTextColor.GREEN else NamedTextColor.RED))) } }
         val s5 = getGlass(settings.teamMessages).apply { itemMeta = itemMeta.apply { displayName(Component.text("Team Messages", NamedTextColor.GOLD)); lore(listOf(Component.text(if (settings.teamMessages) "Enabled" else "Disabled", if (settings.teamMessages) NamedTextColor.GREEN else NamedTextColor.RED))) } }
 
-        inv.setItem(11, s1); inv.setItem(12, s2); inv.setItem(13, s3); inv.setItem(14, s4); inv.setItem(15, s5)
+        val msgLocStr = if (settings.abilityMessagesInChat) "Chat Box" else "Action Bar"
+        val s6 = getGlass(!settings.abilityMessagesInChat).apply { itemMeta = itemMeta.apply { displayName(Component.text("Ability Msg Location", NamedTextColor.GOLD)); lore(listOf(Component.text("Currently: $msgLocStr", NamedTextColor.GRAY))) } }
+
+        inv.setItem(11, s1); inv.setItem(12, s2); inv.setItem(13, s3); inv.setItem(14, s4); inv.setItem(15, s5); inv.setItem(16, s6)
         player.openInventory(inv)
     }
 
@@ -239,13 +243,11 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
             inv.setItem(slot, item)
         }
 
-        // HONOR LORE
         setSlot(11, Material.BOOK, "Good Fortune", "Activation: Passive (Mine with Fortune)", listOf("The Player due to their kind acts", "gains Good Fortune, raising their", "fortune effects based on level.", "", "Level 3: +1 Fortune Level", "Level 9: +2 Fortune Levels", "Level 12: +3 Fortune Levels"), 3, honor >= 3, true)
         setSlot(12, Material.BOOK, "Hero of the Village", "Activation: Passive", listOf("The Player due to their kind acts", "Villagers appreciate them,", "giving them better trades.", "", "Level 6: HotV 1", "Level 9: HotV 2", "Level 12: HotV 3"), 6, honor >= 6, true)
         setSlot(14, Material.BOOK, "Halved Potions", "Activation: Passive (All Potions)", listOf("Due to their good fortune they", "now struggle to take life,", "causing ALL their potion", "durations to be halved."), 9, honor >= 9, true)
         setSlot(15, Material.ENCHANTED_BOOK, "Weapon Fatigue", "Activation: Passive (On hit)", listOf("Due to their good fortune they", "now struggle to take life,", "causing their weapon cooldowns", "to be higher (Sword becomes Axe)."), 12, honor >= 12, true)
 
-        // INFAMY LORE
         setSlot(28, Material.BOOK, "Sword Block", "Activation: Right-Click with Sword", listOf("The Player Receives the ability to", "block incoming damage with their sword,", "causing half damage to be received.", "(1m Cooldown)"), 3, rep >= 3, false)
         setSlot(29, Material.BOOK, "Shield Recovery", "Activation: Sneak + Right-Click with Shield", listOf("The Player Receives the ability to", "pull their Shield back up after", "being broken.", "HOWEVER they take half a heart of", "damage. (25s CD)"), 6, rep >= 6, false)
         setSlot(30, Material.BOOK, "Axe Pierce", "Activation: Attack blocking enemy with Axe", listOf("The Player Receives the ability to", "do Damage through Shields with an", "AXE while breaking it", "(Dealing 2 hearts)."), 9, rep >= 9, false)

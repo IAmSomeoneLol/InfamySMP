@@ -13,13 +13,16 @@ prefixes:
 
 # Global Toggle Settings
 settings:
-  drop-bottle-on-kill: true
-  allow-withdraw: true
-  boss-bottle-announce: true
-  boss-bottle-sound: true
-  show-ability-particles: true # Toggles all combat trails, lava splashes, and shockwaves
-  show-consumption-beacon: true # Toggles the spiral beacon effect when drinking custom bottles
-  bottle-particles:
+  drop-bottle-on-kill: true # Allow player kills to either instant consume or drop on floor
+  allow-withdraw: true # Allow players to use /infamy withdraw
+  boss-bottle-announce: true # Sound effect announcements for Pure Bottle
+  boss-bottle-sound: true # Sound effect for the Pure Bottle
+  show-ability-particles: true # VFX for abilities
+  team-easy-coord: true # Allows teammates to use /infamy team coords and see locations of their members
+  show-consumption-beacon: true # Spiraling Beacon effect
+  nametag-team-color: true # Shows team name and color above player heads
+  team-friendly-fire: true # Disabling this stops teammates from hurting each other
+  bottle-particles: # Change Particle effect type (also changes the Beacon spiral effect to match with corresponding botle)
     infamy:
       enabled: true
       particle: "END_ROD"
@@ -28,12 +31,14 @@ settings:
       particle: "GLOW"
     pure:
       enabled: true
-      particle: "DUST" # DUST is the 1.21 name for Redstone particles
+      particle: "DUST"
 
-custom-model-data:
+custom-model-data: # Do not touch this, used for the Numbering of Textures on Infamy/Honor/Pure bottles
   infamy_bottle: 10001
   honor_bottle: 10002
   boss_bottle: 10003
+
+# (Keep your infamy_abilities, honor_abilities, and elytra-recipe below this untouched!)
 
 # ==========================================
 # Infamy Mechanics (Positive Points)

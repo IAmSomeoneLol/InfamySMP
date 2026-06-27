@@ -61,8 +61,11 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
             }
         }
 
-        val loseAmount = when { victimRep >= 21 -> 3; victimRep >= 11 -> 2; else -> 1 }
-        plugin.infamyManager.setReputation(victim, victimRep - loseAmount)
+        // NEW: Dying cannot push you into negative numbers (Honor). It hard stops at 0.
+        if (victimRep > 0) {
+            val loseAmount = when { victimRep >= 21 -> 3; victimRep >= 11 -> 2; else -> 1 }
+            plugin.infamyManager.setReputation(victim, Math.max(0, victimRep - loseAmount))
+        }
 
         if (killer != null && killer.uniqueId != victim.uniqueId) {
             val now = System.currentTimeMillis()

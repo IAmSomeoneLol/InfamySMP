@@ -5,15 +5,24 @@ import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
+import org.bukkit.inventory.ItemStack
 import java.io.File
 import java.util.UUID
 
-data class TeamData(val name: String, val leader: UUID, val members: MutableSet<UUID> = mutableSetOf())
+data class TeamData(
+    val name: String,
+    var leader: UUID,
+    val members: MutableSet<UUID> = mutableSetOf(),
+    var colorFormat: String = "&f",
+    var icon: ItemStack? = null
+)
 
 class TeamManager(private val plugin: InfamySMP) {
     val teams = mutableMapOf<String, TeamData>()
     val playerTeams = mutableMapOf<UUID, String>()
     private val pendingInvites = mutableMapOf<UUID, String>()
+    val teamChatToggled = mutableSetOf<UUID>()
+    val coordsScoreboardToggled = mutableSetOf<UUID>()
 
     fun saveData() {
         if (!plugin.dataFolder.exists()) plugin.dataFolder.mkdirs()
@@ -23,6 +32,8 @@ class TeamManager(private val plugin: InfamySMP) {
         teams.forEach { (name, data) ->
             config.set("teams.$name.leader", data.leader.toString())
             config.set("teams.$name.members", data.members.map { it.toString() })
+            config.set("teams.$name.colorFormat", data.colorFormat)
+            config.set("teams.$name.icon", data.icon)
         }
         config.save(file)
     }
@@ -34,17 +45,86 @@ class TeamManager(private val plugin: InfamySMP) {
         config.getConfigurationSection("teams")?.getKeys(false)?.forEach { name ->
             val leader = UUID.fromString(config.getString("teams.$name.leader") ?: return@forEach)
             val membersList = config.getStringList("teams.$name.members").map { UUID.fromString(it) }.toMutableSet()
-            teams[name] = TeamData(name, leader, membersList)
+
+            var colorFormat = config.getString("teams.$name.colorFormat") ?: "&f"
+
+            colorFormat = colorFormat.replace("&i", "", ignoreCase = true)
+                .replace("&k", "", ignoreCase = true)
+                .replace("\\[.*?]\\s?".toRegex(), "")
+
+            if (colorFormat.isBlank()) colorFormat = "&f"
+
+            val icon = config.getItemStack("teams.$name.icon")
+
+            teams[name] = TeamData(name, leader, membersList, colorFormat, icon)
             membersList.forEach { member -> playerTeams[member] = name }
         }
     }
 
-    private fun broadcastToTeam(teamName: String, message: String, color: NamedTextColor) {
+    fun broadcastToTeam(teamName: String, message: String, color: NamedTextColor) {
         val team = teams[teamName] ?: return
         team.members.forEach { memberId ->
             val p = Bukkit.getPlayer(memberId)
             if (p != null && plugin.infamyManager.getSettings(p.uniqueId).teamMessages) p.sendMessage(Component.text(message, color))
         }
+    }
+
+    fun syncAllScoreboards() {
+        // GHOST TEAM PURGER: Erases corrupted tags from Minecraft's world/data/scoreboard.dat
+        val mainBoard = Bukkit.getScoreboardManager().mainScoreboard
+        mainBoard.teams.filter { it.name.startsWith("inf_") }.forEach { it.unregister() }
+
+        if (!plugin.config.getBoolean("settings.nametag-team-color", true)) return
+
+        for (player in Bukkit.getOnlinePlayers()) {
+            // Isolates player onto a new scoreboard so sidebars don't conflict, and stops Main Scoreboard pollution
+            if (player.scoreboard == mainBoard) {
+                player.scoreboard = Bukkit.getScoreboardManager().newScoreboard
+            }
+            val board = player.scoreboard
+            board.teams.filter { it.name.startsWith("inf_") }.forEach { it.unregister() }
+
+            teams.values.forEach { team ->
+                val sbTeamName = "inf_${team.name}".take(16)
+                val sbTeam = board.registerNewTeam(sbTeamName)
+
+                val formatComp = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize(team.colorFormat)
+                sbTeam.prefix(formatComp)
+
+                team.members.forEach { memberId ->
+                    val memberName = Bukkit.getOfflinePlayer(memberId).name
+                    if (memberName != null) sbTeam.addEntry(memberName)
+                }
+            }
+        }
+    }
+
+    fun removePlayerHandleLeader(playerUUID: UUID) {
+        val teamName = playerTeams[playerUUID] ?: return
+        val team = teams[teamName] ?: return
+
+        team.members.remove(playerUUID)
+        playerTeams.remove(playerUUID)
+        teamChatToggled.remove(playerUUID)
+        coordsScoreboardToggled.remove(playerUUID)
+
+        Bukkit.getPlayer(playerUUID)?.let {
+            plugin.infamyManager.updateTabList(it)
+            it.scoreboard.getObjective("teamCoords")?.unregister()
+        }
+
+        if (team.members.isEmpty()) {
+            teams.remove(teamName)
+        } else if (team.leader == playerUUID) {
+            val nextLeader = team.members
+                .map { Bukkit.getOfflinePlayer(it) }
+                .sortedBy { it.name?.lowercase() ?: "" }
+                .first().uniqueId
+
+            team.leader = nextLeader
+            broadcastToTeam(teamName, "${Bukkit.getOfflinePlayer(nextLeader).name} has inherited team leadership!", NamedTextColor.GOLD)
+        }
+        syncAllScoreboards()
     }
 
     fun createTeam(leader: Player, teamName: String): Boolean {
@@ -54,6 +134,8 @@ class TeamManager(private val plugin: InfamySMP) {
         newTeam.members.add(leader.uniqueId)
         teams[teamName.lowercase()] = newTeam
         playerTeams[leader.uniqueId] = teamName.lowercase()
+        plugin.infamyManager.updateTabList(leader)
+        syncAllScoreboards()
         return true
     }
 
@@ -62,8 +144,19 @@ class TeamManager(private val plugin: InfamySMP) {
         val team = teams[teamName] ?: return false
         if (team.leader != leader.uniqueId) return false
         broadcastToTeam(teamName, "The team '$teamName' has been disbanded by the leader.", NamedTextColor.RED)
-        team.members.forEach { playerTeams.remove(it) }
+
+        val onlineMembers = team.members.mapNotNull { Bukkit.getPlayer(it) }
+        team.members.forEach {
+            playerTeams.remove(it)
+            teamChatToggled.remove(it)
+            coordsScoreboardToggled.remove(it)
+        }
         teams.remove(teamName)
+        onlineMembers.forEach {
+            plugin.infamyManager.updateTabList(it)
+            it.scoreboard.getObjective("teamCoords")?.unregister()
+        }
+        syncAllScoreboards()
         return true
     }
 
@@ -79,20 +172,21 @@ class TeamManager(private val plugin: InfamySMP) {
         team.members.add(target.uniqueId)
         playerTeams[target.uniqueId] = teamName
         broadcastToTeam(teamName, "${target.name} joined the team!", NamedTextColor.GREEN)
+        plugin.infamyManager.updateTabList(target)
+        syncAllScoreboards()
         return true
     }
 
     fun declineInvite(target: UUID): Boolean = pendingInvites.remove(target) != null
 
     fun leaveTeam(player: Player): Boolean {
-        val teamName = playerTeams.remove(player.uniqueId) ?: return false
+        val teamName = playerTeams[player.uniqueId] ?: return false
         val team = teams[teamName] ?: return false
         if (team.leader == player.uniqueId) {
             player.sendMessage(Component.text("You cannot leave as the leader. You must /infamy team disband.", NamedTextColor.RED))
-            playerTeams[player.uniqueId] = teamName
             return false
         }
-        team.members.remove(player.uniqueId)
+        removePlayerHandleLeader(player.uniqueId)
         broadcastToTeam(teamName, "${player.name} left the team.", NamedTextColor.YELLOW)
         return true
     }
@@ -101,8 +195,7 @@ class TeamManager(private val plugin: InfamySMP) {
         val teamName = playerTeams[leader.uniqueId] ?: return false
         val team = teams[teamName] ?: return false
         if (team.leader != leader.uniqueId || target == leader.uniqueId || !team.members.contains(target)) return false
-        team.members.remove(target)
-        playerTeams.remove(target)
+        removePlayerHandleLeader(target)
         broadcastToTeam(teamName, "${Bukkit.getOfflinePlayer(target).name} was kicked from the team.", NamedTextColor.YELLOW)
         return true
     }

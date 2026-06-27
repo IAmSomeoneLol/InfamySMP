@@ -24,9 +24,18 @@ import java.util.UUID
 
 class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabCompleter {
 
-    private fun isAdmin(sender: CommandSender): Boolean {
-        return sender.isOp || sender.hasPermission("infamysmp.admin")
-    }
+    private fun isAdmin(sender: CommandSender): Boolean = sender.isOp || sender.hasPermission("infamysmp.admin")
+
+    // Mapping to safely autocomplete and build strings
+    private val colorMap = mapOf(
+        "black" to "&0", "dark_blue" to "&1", "dark_green" to "&2", "dark_aqua" to "&3",
+        "dark_red" to "&4", "dark_purple" to "&5", "gold" to "&6", "gray" to "&7",
+        "dark_gray" to "&8", "blue" to "&9", "green" to "&a", "aqua" to "&b",
+        "red" to "&c", "light_purple" to "&d", "yellow" to "&e", "white" to "&f"
+    )
+    private val formatMap = mapOf(
+        "bold" to "&l", "italic" to "&o", "underline" to "&n", "strikethrough" to "&m"
+    )
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         if (args.isEmpty()) {
@@ -67,7 +76,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             completions.addAll(subs.filter { it.startsWith(args[0].lowercase()) })
         } else if (args.size == 2) {
             when (args[0].lowercase()) {
-                "team" -> completions.addAll(listOf("create", "disband", "invite", "accept", "decline", "leave", "kick", "list").filter { it.startsWith(args[1].lowercase()) })
+                "team" -> completions.addAll(listOf("create", "disband", "invite", "accept", "decline", "leave", "kick", "list", "chat", "color", "icon", "leadership", "coords").filter { it.startsWith(args[1].lowercase()) })
                 "add", "level", "debugkill" -> if (isAdmin(sender)) completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[1].lowercase()) })
                 "bottle" -> if (isAdmin(sender)) completions.addAll(listOf("honor", "infamy", "pure").filter { it.startsWith(args[1].lowercase()) })
                 "top" -> if (isAdmin(sender)) completions.add("refresh")
@@ -79,6 +88,16 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[2].lowercase()) })
             } else if (args[0].lowercase() == "debugkill" && isAdmin(sender)) {
                 completions.addAll(listOf("DROPPED", "PICKED_UP", "STASHED", "WITHDRAWN", "STOLEN", "LOST").filter { it.startsWith(args[2].uppercase()) })
+            } else if (args[0].lowercase() == "team") {
+                if (args[1].lowercase() == "icon") completions.addAll(listOf("reset").filter { it.startsWith(args[2].lowercase()) })
+                else if (args[1].lowercase() == "leadership" || args[1].lowercase() == "kick") completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[2].lowercase()) })
+                else if (args[1].lowercase() == "coords") completions.addAll(listOf("on", "off", "toggle").filter { it.startsWith(args[2].lowercase()) })
+                else if (args[1].lowercase() == "color") completions.addAll(colorMap.keys.filter { it.startsWith(args[2].lowercase()) })
+            }
+        } else if (args.size >= 4) {
+            if (args[0].lowercase() == "team" && args[1].lowercase() == "color") {
+                // Allows infinite stacking of formats (e.g. bold italic strikethrough)
+                completions.addAll(formatMap.keys.filter { it.startsWith(args.last().lowercase()) && !args.contains(it) })
             }
         }
         return completions
@@ -104,16 +123,16 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         val cl = plugin.combatListener
 
         if (args.size > 1 && args[1].lowercase() == "refresh" && isAdmin(player)) {
-            cl.swordBlockCooldowns.remove(player.uniqueId)
-            cl.swordBlockActiveUntil.remove(player.uniqueId)
-            cl.shieldAbilityCooldowns.remove(player.uniqueId)
-            cl.activeBrokenShields.remove(player.uniqueId)
-            cl.bleedCooldowns.remove(player.uniqueId)
-            cl.activeBleedCharge.remove(player.uniqueId)
-            cl.maceCooldowns.remove(player.uniqueId)
-            cl.sacrificeCooldowns.remove(player.uniqueId)
-            cl.activeSacrifices.remove(player.uniqueId)
-
+            cl.swordBlockCooldowns.clear()
+            cl.swordBlockActiveUntil.clear()
+            cl.shieldAbilityCooldowns.clear()
+            cl.activeBrokenShields.clear()
+            cl.bleedCooldowns.clear()
+            cl.activeBleedCharge.clear()
+            cl.maceCooldowns.clear()
+            cl.sacrificeCooldowns.clear()
+            cl.activeSacrifices.clear()
+            cl.maceActivePlayers.clear()
             player.sendMessage(Component.text("All ability cooldowns refreshed and active abilities terminated!", NamedTextColor.GREEN))
             return
         }
@@ -235,7 +254,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         if (sender !is Player) return
         val inv = Bukkit.createInventory(null, 54, Component.text("Your Kill History", NamedTextColor.DARK_RED))
         val history = plugin.infamyManager.killHistory.filter { it.killer == sender.uniqueId }.sortedByDescending { it.timestamp }.take(54)
-        history.forEachIndexed { index, record -> populateHistorySlot(inv, index, record) }
+        history.forEachIndexed { index, record -> populateHistorySlot(inv, index, record, false) }
         sender.openInventory(inv)
     }
 
@@ -243,11 +262,11 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         if (sender !is Player || !isAdmin(sender)) return
         val inv = Bukkit.createInventory(null, 54, Component.text("Server Kill History", NamedTextColor.DARK_RED))
         val history = plugin.infamyManager.killHistory.sortedByDescending { it.timestamp }.take(54)
-        history.forEachIndexed { index, record -> populateHistorySlot(inv, index, record) }
+        history.forEachIndexed { index, record -> populateHistorySlot(inv, index, record, true) }
         sender.openInventory(inv)
     }
 
-    private fun populateHistorySlot(inv: org.bukkit.inventory.Inventory, index: Int, record: KillRecord) {
+    private fun populateHistorySlot(inv: org.bukkit.inventory.Inventory, index: Int, record: KillRecord, showCoords: Boolean) {
         val head = ItemStack(Material.PLAYER_HEAD)
         val meta = head.itemMeta as SkullMeta
         meta.owningPlayer = Bukkit.getOfflinePlayer(record.victim)
@@ -264,13 +283,17 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             else -> NamedTextColor.WHITE
         }
 
-        meta.lore(listOf(
+        val lore = mutableListOf(
             Component.text("Killed By: ${record.killerName}", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false),
-            Component.text("Date: $dateStr", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-            Component.text("Coords: ${record.location}", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-            Component.text(" "),
-            Component.text("Bottle Status: ${record.status}", color).decoration(TextDecoration.ITALIC, false)
-        ))
+            Component.text("Date: $dateStr", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+        )
+        if (showCoords) {
+            lore.add(Component.text("Coords: ${record.location}", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false))
+        }
+        lore.add(Component.text(" "))
+        lore.add(Component.text("Bottle Status: ${record.status}", color).decoration(TextDecoration.ITALIC, false))
+
+        meta.lore(lore)
         head.itemMeta = meta
         inv.setItem(index, head)
     }
@@ -280,10 +303,15 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         val inv = Bukkit.createInventory(null, 54, Component.text("Registered Teams", NamedTextColor.DARK_RED))
         plugin.teamManager.teams.values.forEachIndexed { index, team ->
             if (index >= 54) return@forEachIndexed
-            val head = ItemStack(Material.PLAYER_HEAD)
-            val meta = head.itemMeta as SkullMeta
-            meta.owningPlayer = Bukkit.getOfflinePlayer(team.leader)
-            meta.displayName(Component.text("Team: ${team.name}", NamedTextColor.RED))
+
+            val head = team.icon?.clone() ?: ItemStack(Material.PLAYER_HEAD).apply {
+                val m = itemMeta as SkullMeta
+                m.owningPlayer = Bukkit.getOfflinePlayer(team.leader)
+                itemMeta = m
+            }
+
+            val meta = head.itemMeta
+            meta.displayName(Component.text("Team: ${team.name}", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false))
             val lore = mutableListOf(Component.text("Leader: ${Bukkit.getOfflinePlayer(team.leader).name}", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false), Component.text("Members (${team.members.size}):", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false))
             team.members.forEach { uuid ->
                 val offline = Bukkit.getOfflinePlayer(uuid)
@@ -305,10 +333,13 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
 
     private fun handleTeamCommand(sender: CommandSender, args: Array<out String>) {
         if (sender !is Player) return
-        if (args.size < 2) return sender.sendMessage(Component.text("Usage: /infamy team <create|disband|invite|accept|decline|leave|kick|list> [args]", NamedTextColor.RED))
+        if (args.size < 2) return sender.sendMessage(Component.text("Usage: /infamy team <create|disband|invite|accept|decline|leave|kick|list|chat|color|icon|leadership|coords> [args]", NamedTextColor.RED))
 
         when (args[1].lowercase()) {
             "create" -> {
+                if (plugin.infamyManager.getRawReputation(sender) >= 21) {
+                    return sender.sendMessage(Component.text("The Boss stands alone. You cannot create a team.", NamedTextColor.RED))
+                }
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy team create <name>", NamedTextColor.RED))
                 if (plugin.teamManager.createTeam(sender, args[2])) sender.sendMessage(Component.text("Team '${args[2]}' created!", NamedTextColor.GREEN)) else sender.sendMessage(Component.text("You are already in a team, or that name is taken.", NamedTextColor.RED))
             }
@@ -323,7 +354,12 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                     target.sendMessage(Component.text("${sender.name} invited you to join '${myTeam.name}'! Use /infamy team accept", NamedTextColor.AQUA))
                 } else sender.sendMessage(Component.text("${target.name} is already in a team!", NamedTextColor.RED))
             }
-            "accept" -> if (plugin.teamManager.acceptInvite(sender)) sender.sendMessage(Component.text("You joined the team!", NamedTextColor.GREEN)) else sender.sendMessage(Component.text("No pending invites.", NamedTextColor.RED))
+            "accept" -> {
+                if (plugin.infamyManager.getRawReputation(sender) >= 21) {
+                    return sender.sendMessage(Component.text("The Boss stands alone. You cannot join a team.", NamedTextColor.RED))
+                }
+                if (plugin.teamManager.acceptInvite(sender)) sender.sendMessage(Component.text("You joined the team!", NamedTextColor.GREEN)) else sender.sendMessage(Component.text("No pending invites.", NamedTextColor.RED))
+            }
             "decline" -> { plugin.teamManager.declineInvite(sender.uniqueId); sender.sendMessage(Component.text("Invite declined.", NamedTextColor.YELLOW)) }
             "leave" -> plugin.teamManager.leaveTeam(sender)
             "kick" -> {
@@ -337,6 +373,133 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 val team = plugin.teamManager.getTeam(sender.uniqueId) ?: return sender.sendMessage(Component.text("You are not in a team.", NamedTextColor.RED))
                 sender.sendMessage(Component.text("Team: ${team.name} | Leader: ${Bukkit.getOfflinePlayer(team.leader).name}", NamedTextColor.GOLD))
                 team.members.forEach { sender.sendMessage(Component.text("- ${Bukkit.getOfflinePlayer(it).name}", NamedTextColor.GREEN)) }
+            }
+            "chat" -> {
+                val team = plugin.teamManager.getTeam(sender.uniqueId) ?: return sender.sendMessage(Component.text("You are not in a team.", NamedTextColor.RED))
+                if (args.size == 2) {
+                    if (plugin.teamManager.teamChatToggled.contains(sender.uniqueId)) {
+                        plugin.teamManager.teamChatToggled.remove(sender.uniqueId)
+                        sender.sendMessage(Component.text("Team chat disabled. Messages are now global.", NamedTextColor.YELLOW))
+                    } else {
+                        plugin.teamManager.teamChatToggled.add(sender.uniqueId)
+                        sender.sendMessage(Component.text("Team chat enabled! All chat messages will route to your team.", NamedTextColor.GREEN))
+                    }
+                } else {
+                    val msgText = args.drop(2).joinToString(" ")
+                    plugin.teamManager.broadcastToTeam(team.name, "[Team] (${sender.name}) | $msgText", NamedTextColor.AQUA)
+                }
+            }
+            "color" -> {
+                val team = plugin.teamManager.getTeam(sender.uniqueId) ?: return sender.sendMessage(Component.text("You are not in a team.", NamedTextColor.RED))
+                if (team.leader != sender.uniqueId) return sender.sendMessage(Component.text("Only the team leader can change the color.", NamedTextColor.RED))
+                if (args.size < 3) {
+                    sender.sendMessage(Component.text("Usage: /infamy team color <color> [format...]", NamedTextColor.RED))
+                    return
+                }
+
+                val colorInput = args[2].lowercase()
+                val colorCode = colorMap[colorInput]
+                if (colorCode == null) {
+                    sender.sendMessage(Component.text("Invalid Color! Available: ${colorMap.keys.joinToString(", ")}", NamedTextColor.RED))
+                    return
+                }
+
+                var formatCode = ""
+                if (args.size > 3) {
+                    for (i in 3 until args.size) {
+                        val formatInput = args[i].lowercase()
+                        val fCode = formatMap[formatInput]
+                        if (fCode != null && !formatCode.contains(fCode)) {
+                            formatCode += fCode
+                        } else if (fCode == null) {
+                            sender.sendMessage(Component.text("Invalid Format '$formatInput'! Available: ${formatMap.keys.joinToString(", ")}", NamedTextColor.RED))
+                            return
+                        }
+                    }
+                }
+
+                team.colorFormat = colorCode + formatCode
+                sender.sendMessage(Component.text("Team color & formatting successfully updated!", NamedTextColor.GREEN))
+                team.members.mapNotNull { Bukkit.getPlayer(it) }.forEach { plugin.infamyManager.updateTabList(it) }
+                plugin.teamManager.syncAllScoreboards()
+            }
+            "icon" -> {
+                val team = plugin.teamManager.getTeam(sender.uniqueId) ?: return sender.sendMessage(Component.text("You are not in a team.", NamedTextColor.RED))
+                if (team.leader != sender.uniqueId) return sender.sendMessage(Component.text("Only the team leader can change the icon.", NamedTextColor.RED))
+
+                if (args.size == 3 && args[2].lowercase() == "reset") {
+                    team.icon = null
+                    sender.sendMessage(Component.text("Team icon reset to leader's head.", NamedTextColor.GREEN))
+                    return
+                }
+
+                val item = sender.inventory.itemInMainHand
+                if (item.type.name.endsWith("_BANNER")) {
+                    val iconItem = item.clone()
+                    iconItem.amount = 1
+                    team.icon = iconItem
+                    sender.sendMessage(Component.text("Team banner icon updated successfully! Check the /infamy team GUI.", NamedTextColor.GREEN))
+                } else {
+                    sender.sendMessage(Component.text("You must hold a Banner to set the team icon! Use '/infamy team icon reset' to clear it.", NamedTextColor.RED))
+                }
+            }
+            "leadership" -> {
+                val teamName = plugin.teamManager.playerTeams[sender.uniqueId] ?: return sender.sendMessage(Component.text("You are not in a team.", NamedTextColor.RED))
+                val team = plugin.teamManager.teams[teamName] ?: return sender.sendMessage(Component.text("Error finding team.", NamedTextColor.RED))
+                if (team.leader != sender.uniqueId) return sender.sendMessage(Component.text("Only the team leader can transfer leadership.", NamedTextColor.RED))
+                if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy team leadership <player>", NamedTextColor.RED))
+
+                val target = Bukkit.getOfflinePlayer(args[2])
+                if (!team.members.contains(target.uniqueId)) return sender.sendMessage(Component.text("That player is not in your team.", NamedTextColor.RED))
+
+                team.leader = target.uniqueId
+                plugin.teamManager.broadcastToTeam(teamName, "${target.name} has been promoted to Team Leader!", NamedTextColor.GOLD)
+            }
+            "coords" -> {
+                if (!plugin.config.getBoolean("settings.team-easy-coord", true)) {
+                    return sender.sendMessage(Component.text("This feature is disabled on the server.", NamedTextColor.RED))
+                }
+                if (args.size == 3) {
+                    when(args[2].lowercase()) {
+                        "toggle", "on", "off" -> {
+                            if (plugin.teamManager.coordsScoreboardToggled.contains(sender.uniqueId)) {
+                                plugin.teamManager.coordsScoreboardToggled.remove(sender.uniqueId)
+                                sender.scoreboard.getObjective("teamCoords")?.unregister()
+                                sender.sendMessage(Component.text("Team coords scoreboard disabled.", NamedTextColor.YELLOW))
+                            } else {
+                                plugin.teamManager.coordsScoreboardToggled.add(sender.uniqueId)
+                                sender.sendMessage(Component.text("Team coords scoreboard enabled.", NamedTextColor.GREEN))
+                            }
+                            return
+                        }
+                    }
+                }
+
+                val teamName = plugin.teamManager.playerTeams[sender.uniqueId] ?: return sender.sendMessage(Component.text("You are not in a team.", NamedTextColor.RED))
+                val team = plugin.teamManager.teams[teamName] ?: return sender.sendMessage(Component.text("Error finding team.", NamedTextColor.RED))
+
+                sender.sendMessage(Component.text("=== ${team.name} Member Locations ===", NamedTextColor.GOLD))
+                team.members.forEach { memberId ->
+                    val member = Bukkit.getPlayer(memberId)
+                    if (member != null) {
+                        val loc = member.location
+                        val dim = loc.world.name.replace("world_nether", "Nether").replace("world_the_end", "The End").replace("world", "Overworld")
+                        val coordsStr = "${loc.blockX}, ${loc.blockY}, ${loc.blockZ}"
+
+                        var distStr = ""
+                        if (member.world == sender.world) {
+                            val dist = member.location.distance(sender.location).toInt()
+                            distStr = " (${dist}m away)"
+                        }
+
+                        sender.sendMessage(Component.text("- ${member.name}: ", NamedTextColor.AQUA)
+                            .append(Component.text("$dim | $coordsStr", NamedTextColor.WHITE))
+                            .append(Component.text(distStr, NamedTextColor.GRAY)))
+                    } else {
+                        val offPlayer = Bukkit.getOfflinePlayer(memberId)
+                        sender.sendMessage(Component.text("- ${offPlayer.name}: Offline", NamedTextColor.DARK_GRAY))
+                    }
+                }
             }
         }
     }
@@ -382,27 +545,50 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
 
     private fun handleWithdrawCommand(sender: CommandSender, args: Array<out String>) {
         if (sender !is Player) return
-        if (!plugin.config.getBoolean("settings.allow-withdraw", true)) return sender.sendMessage(Component.text("Withdrawing points is disabled.", NamedTextColor.RED))
+        val isAdmin = isAdmin(sender)
+
+        if (!isAdmin && !plugin.config.getBoolean("settings.allow-withdraw", true)) {
+            return sender.sendMessage(Component.text("Withdrawing points is disabled.", NamedTextColor.RED))
+        }
         if (args.size < 2) return sender.sendMessage(Component.text("Usage: /infamy withdraw <amount>", NamedTextColor.RED))
 
         val amount = args[1].toIntOrNull() ?: return sender.sendMessage(Component.text("Invalid amount.", NamedTextColor.RED))
         val currentRep = plugin.infamyManager.getRawReputation(sender)
 
-        if (currentRep <= 0 || amount > currentRep) return sender.sendMessage(Component.text("You don't have enough Infamy points!", NamedTextColor.RED))
+        if (currentRep == 0) return sender.sendMessage(Component.text("You have 0 points to withdraw!", NamedTextColor.RED))
 
-        plugin.infamyManager.withdrawnPoints[sender.uniqueId] = (plugin.infamyManager.withdrawnPoints[sender.uniqueId] ?: 0) + amount
-
-        if (currentRep == 21) {
-            plugin.infamyManager.setReputation(sender, currentRep - amount)
-            sender.inventory.addItem(plugin.itemManager.createPureInfamyBottle(sender.name, "Withdrawn")).values.forEach { sender.world.dropItemNaturally(sender.location, it).isInvulnerable = true }
-            if (amount > 1) {
-                sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount - 1, sender.name, sender.uniqueId.toString())).values.forEach { sender.world.dropItemNaturally(sender.location, it).isInvulnerable = true }
+        if (currentRep > 0) {
+            if (!isAdmin && !plugin.config.getBoolean("settings.allow-withdraw-infamy", true)) {
+                return sender.sendMessage(Component.text("Infamy withdrawals are currently disabled by the server.", NamedTextColor.RED))
             }
-            sender.sendMessage(Component.text("You withdrew points and extracted the Pure Infamy Bottle!", NamedTextColor.GREEN))
+            if (amount > currentRep) return sender.sendMessage(Component.text("You don't have enough Infamy points!", NamedTextColor.RED))
+
+            plugin.infamyManager.withdrawnPoints[sender.uniqueId] = (plugin.infamyManager.withdrawnPoints[sender.uniqueId] ?: 0) + amount
+
+            if (currentRep == 21) {
+                plugin.infamyManager.setReputation(sender, currentRep - amount)
+                sender.inventory.addItem(plugin.itemManager.createPureInfamyBottle(sender.name, "Withdrawn")).values.forEach { sender.world.dropItemNaturally(sender.location, it).isInvulnerable = true }
+                if (amount > 1) {
+                    sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount - 1, sender.name, sender.uniqueId.toString())).values.forEach { sender.world.dropItemNaturally(sender.location, it).isInvulnerable = true }
+                }
+                sender.sendMessage(Component.text("You withdrew points and extracted the Pure Infamy Bottle!", NamedTextColor.GREEN))
+            } else {
+                plugin.infamyManager.setReputation(sender, currentRep - amount)
+                sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount, sender.name, sender.uniqueId.toString())).values.forEach { sender.world.dropItemNaturally(sender.location, it).isInvulnerable = true }
+                sender.sendMessage(Component.text("Successfully withdrew $amount Infamy point(s)!", NamedTextColor.GREEN))
+            }
         } else {
-            plugin.infamyManager.setReputation(sender, currentRep - amount)
-            sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount, sender.name, sender.uniqueId.toString())).values.forEach { sender.world.dropItemNaturally(sender.location, it).isInvulnerable = true }
-            sender.sendMessage(Component.text("Successfully withdrew $amount Infamy point(s)!", NamedTextColor.GREEN))
+            if (!isAdmin && !plugin.config.getBoolean("settings.allow-withdraw-honor", true)) {
+                return sender.sendMessage(Component.text("Honor withdrawals are currently disabled by the server.", NamedTextColor.RED))
+            }
+            val absoluteHonor = -currentRep
+            if (amount > absoluteHonor) return sender.sendMessage(Component.text("You don't have enough Honor points!", NamedTextColor.RED))
+
+            plugin.infamyManager.setReputation(sender, currentRep + amount)
+            for(i in 1..amount) {
+                sender.inventory.addItem(plugin.itemManager.createHonorBottle()).values.forEach { sender.world.dropItemNaturally(sender.location, it) }
+            }
+            sender.sendMessage(Component.text("Successfully withdrew $amount Honor point(s)!", NamedTextColor.AQUA))
         }
     }
 
@@ -424,13 +610,11 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             val bottle = when (type) {
                 "pure" -> plugin.itemManager.createPureInfamyBottle("Admin Spawned", sender.name)
                 "honor" -> plugin.itemManager.createHonorBottle()
-                // BUG FIX: Pass null for UUID to prevent parsing crash on admin bottles
                 else -> plugin.itemManager.createInfamyBottle(level, "Admin Spawned", null)
             }
             target.inventory.addItem(bottle).values.forEach { target.world.dropItemNaturally(target.location, it) }
             given++
         }
-
         sender.sendMessage(Component.text("Given $given $type bottle(s) to ${target.name}.", NamedTextColor.GREEN))
     }
 }

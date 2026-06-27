@@ -15,6 +15,7 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.entity.EntityDamageByEntityEvent
+import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.potion.PotionEffect
@@ -34,19 +35,30 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
     val activeBleedCharge = mutableMapOf<UUID, Long>()
 
     val maceCooldowns = mutableMapOf<UUID, Long>()
+    val maceActivePlayers = mutableSetOf<UUID>()
 
     val sacrificeCooldowns = mutableMapOf<UUID, Long>()
     val activeSacrifices = mutableSetOf<UUID>()
 
     private fun msg(player: Player, text: String, color: NamedTextColor) {
-        if (plugin.infamyManager.getSettings(player.uniqueId).abilityMessages) {
-            player.sendMessage(Component.text(text, color))
+        val settings = plugin.infamyManager.getSettings(player.uniqueId)
+        if (settings.abilityMessages) {
+            if (settings.abilityMessagesInChat) {
+                player.sendMessage(Component.text(text, color))
+            } else {
+                player.sendActionBar(Component.text(text, color))
+            }
         }
     }
 
     private fun msgCD(player: Player, text: String, color: NamedTextColor) {
-        if (plugin.infamyManager.getSettings(player.uniqueId).cooldownMessages) {
-            player.sendMessage(Component.text(text, color))
+        val settings = plugin.infamyManager.getSettings(player.uniqueId)
+        if (settings.cooldownMessages) {
+            if (settings.abilityMessagesInChat) {
+                player.sendMessage(Component.text(text, color))
+            } else {
+                player.sendActionBar(Component.text(text, color))
+            }
         }
     }
 
@@ -71,9 +83,6 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         val mainItem = player.inventory.itemInMainHand
         val offItem = player.inventory.itemInOffHand
 
-        // ==========================================
-        // LEVEL 21: HELLCRUSH
-        // ==========================================
         if (mainItem.type.isAir && player.isSneaking && rep >= 21) {
             if (action == Action.RIGHT_CLICK_BLOCK || action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
                 val now = System.currentTimeMillis()
@@ -104,9 +113,6 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
         if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) return
 
-        // ==========================================
-        // LEVEL 6: SHIELD RECOVERY
-        // ==========================================
         if ((mainItem.type == Material.SHIELD || offItem.type == Material.SHIELD) && player.isSneaking && rep >= 6) {
             if (player.hasCooldown(Material.SHIELD)) {
                 val now = System.currentTimeMillis()
@@ -115,7 +121,6 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 if (now - lastUsed > 25000) {
                     shieldAbilityCooldowns[player.uniqueId] = now
                     player.setCooldown(Material.SHIELD, 0)
-
                     player.health = (player.health - 1.0).coerceAtLeast(0.0)
 
                     if (plugin.config.getBoolean("settings.show-ability-particles", true)) {
@@ -133,9 +138,6 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
         val item = event.item ?: return
 
-        // ==========================================
-        // LEVEL 3: SWORD BLOCK
-        // ==========================================
         if (item.type.name.endsWith("_SWORD") && rep >= 3) {
             val now = System.currentTimeMillis()
             val lastUsed = swordBlockCooldowns[player.uniqueId] ?: 0
@@ -144,14 +146,16 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 swordBlockActiveUntil[player.uniqueId] = now + 5000
                 msg(player, "Sword Block armed! 50% damage protection for 5s.", NamedTextColor.GREEN)
                 player.world.playSound(player.location, Sound.ITEM_SHIELD_BLOCK, 1f, 1.2f)
+
+                // NEW: End Rod Glitter Blast on Activation
+                if (plugin.config.getBoolean("settings.show-ability-particles", true)) {
+                    player.world.spawnParticle(Particle.END_ROD, player.location.add(0.0, 1.0, 0.0), 25, 0.4, 0.4, 0.4, 0.1)
+                }
             } else {
                 msgCD(player, "Sword Block on cooldown! (${(60000 - (now - lastUsed))/1000}s)", NamedTextColor.RED)
             }
         }
 
-        // ==========================================
-        // LEVEL 18: BLEEDING EDGE PRIME
-        // ==========================================
         if ((item.type == Material.DIAMOND_SWORD || item.type == Material.NETHERITE_SWORD) && rep >= 18) {
             val now = System.currentTimeMillis()
             val lastUsed = bleedCooldowns[player.uniqueId] ?: 0
@@ -188,9 +192,6 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             }
         }
 
-        // ==========================================
-        // LEVEL 20: MACE SLAM
-        // ==========================================
         if (item.type == Material.MACE && rep >= 20) {
             val now = System.currentTimeMillis()
             val lastUsed = maceCooldowns[player.uniqueId] ?: 0
@@ -198,22 +199,30 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             if (now - lastUsed > 60000) {
                 maceCooldowns[player.uniqueId] = now
                 val startHeight = player.location.y
-                player.velocity = player.location.direction.multiply(2.2).setY(1.2)
+
+                player.velocity = player.location.direction.multiply(1.5).setY(1.4)
                 player.world.playSound(player.location, Sound.ENTITY_ENDER_DRAGON_FLAP, 1.2f, 0.8f)
+
+                msg(player, "Mace Slam activated! Crashing down...", NamedTextColor.DARK_RED)
+                maceActivePlayers.add(player.uniqueId)
 
                 val showParticles = plugin.config.getBoolean("settings.show-ability-particles", true)
 
                 object : BukkitRunnable() {
                     override fun run() {
-                        if (player.isDead || !player.isOnline) { cancel(); return }
+                        if (player.isDead || !player.isOnline) {
+                            maceActivePlayers.remove(player.uniqueId)
+                            cancel()
+                            return
+                        }
 
                         if (showParticles) {
                             player.world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, player.location, 2, 0.1, 0.1, 0.1, 0.01)
                         }
 
-                        val blockBelow = player.location.clone().subtract(0.0, 0.1, 0.0).block
-                        if (player.velocity.y <= 0.0 && blockBelow.type.isSolid) {
+                        if (player.velocity.y <= 0.0 && (player.isOnGround || player.location.subtract(0.0, 0.1, 0.0).block.type.isSolid)) {
                             createMaceShockwave(player, startHeight, showParticles)
+                            maceActivePlayers.remove(player.uniqueId)
                             cancel()
                         }
                     }
@@ -225,22 +234,32 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
     }
 
     private fun createMaceShockwave(player: Player, startY: Double, showParticles: Boolean) {
-        val fallDistance = startY - player.location.y
-        if (fallDistance <= 0) return
+        val fallDistance = (startY - player.location.y).coerceAtLeast(1.0)
 
         if (showParticles) player.world.spawnParticle(Particle.EXPLOSION, player.location, 5)
         player.world.playSound(player.location, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.9f)
 
         for (entity in player.getNearbyEntities(6.0, 4.0, 6.0)) {
             if (entity is LivingEntity && entity.uniqueId != player.uniqueId) {
-                val distance = entity.location.distance(player.location)
-                val heightMultiplier = fallDistance * 1.5
-                val distanceMultiplier = (6.0 - distance).coerceAtLeast(1.0)
 
-                val damage = (heightMultiplier + distanceMultiplier).coerceAtMost(12.0)
+                val dir = entity.location.toVector().subtract(player.location.toVector()).setY(0.0)
+                if (dir.lengthSquared() > 0) dir.normalize() else dir.setX(1.0)
+
+                entity.velocity = dir.multiply(1.0).setY(1.4)
+
+                val heightMultiplier = fallDistance * 1.5
+                val damage = heightMultiplier.coerceAtMost(12.0)
                 entity.damage(damage, player)
-                entity.velocity = entity.velocity.setY(0.9)
             }
+        }
+    }
+
+    @EventHandler
+    fun onEntityDamage(event: EntityDamageEvent) {
+        val player = event.entity as? Player ?: return
+
+        if (event.cause == EntityDamageEvent.DamageCause.FALL && maceActivePlayers.contains(player.uniqueId)) {
+            event.damage *= 0.75
         }
     }
 
@@ -251,6 +270,18 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
         if (victim is Player) {
             val victimRep = plugin.infamyManager.getRawReputation(victim)
+
+            if (victim.name in InfamySMP.legacyProfiles) {
+                event.damage *= 0.90
+            }
+
+            val attacker = event.damager as? Player
+            if (attacker != null && !plugin.config.getBoolean("settings.team-friendly-fire", true)) {
+                if (plugin.teamManager.areTeammates(victim.uniqueId, attacker.uniqueId)) {
+                    event.isCancelled = true
+                    return
+                }
+            }
 
             if (victimRep >= 3) {
                 val expires = swordBlockActiveUntil[victim.uniqueId] ?: 0
@@ -292,6 +323,8 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             msg(attacker, "Bleeding Edge strike landed!", NamedTextColor.DARK_RED)
 
             var ticks = 0
+            val showParticles = plugin.config.getBoolean("settings.show-ability-particles", true)
+
             val bleedTask = object : BukkitRunnable() {
                 override fun run() {
                     if (victim.isDead || !victim.isValid) { cancel(); return }
@@ -305,6 +338,12 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                             victim.playHurtAnimation(0f)
                         }
                         victim.world.spawnParticle(Particle.DAMAGE_INDICATOR, victim.location.add(0.0, 1.0, 0.0), 5)
+
+                        if (showParticles) {
+                            val redDust = org.bukkit.Particle.DustOptions(org.bukkit.Color.RED, 1.5f)
+                            victim.world.spawnParticle(Particle.DUST, victim.location.add(0.0, 1.0, 0.0), 10, 0.3, 0.5, 0.3, 0.0, redDust)
+                        }
+
                         ticks++
                     } else {
                         victim.addPotionEffect(PotionEffect(PotionEffectType.NAUSEA, 80, 0))

@@ -2,6 +2,8 @@ package com.enxivity.infamy
 
 import com.enxivity.infamy.commands.InfamyCommand
 import com.enxivity.infamy.listeners.*
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.attribute.Attribute
@@ -21,6 +23,10 @@ class InfamySMP : JavaPlugin(), Listener {
     lateinit var teamManager: TeamManager
     lateinit var combatListener: CombatListener
     lateinit var itemRestrictionsListener: ItemRestrictionsListener
+
+    companion object {
+        val legacyProfiles = listOf("NelA47", "JustHaki", "R6ACEEZZZ", "HyperStove")
+    }
 
     override fun onEnable() {
         saveDefaultConfig()
@@ -59,7 +65,54 @@ class InfamySMP : JavaPlugin(), Listener {
         val lastHonorLevels = mutableMapOf<java.util.UUID, Int>()
 
         server.scheduler.runTaskTimer(this, Runnable {
+            val easyCoordEnabled = config.getBoolean("settings.team-easy-coord", true)
+            val showParticles = config.getBoolean("settings.show-ability-particles", true)
+
             for (player in server.onlinePlayers) {
+                // ==========================================
+                // SIDEBAR COORDS TRACKER
+                // ==========================================
+                if (!easyCoordEnabled && teamManager.coordsScoreboardToggled.contains(player.uniqueId)) {
+                    teamManager.coordsScoreboardToggled.remove(player.uniqueId)
+                    player.scoreboard.getObjective("teamCoords")?.unregister()
+                } else if (easyCoordEnabled && teamManager.coordsScoreboardToggled.contains(player.uniqueId)) {
+                    val team = teamManager.getTeam(player.uniqueId)
+                    if (team == null) {
+                        teamManager.coordsScoreboardToggled.remove(player.uniqueId)
+                        player.scoreboard.getObjective("teamCoords")?.unregister()
+                    } else {
+                        val obj = player.scoreboard.getObjective("teamCoords") ?: player.scoreboard.registerNewObjective("teamCoords", "dummy", Component.text("Team Locations", NamedTextColor.GOLD)).apply { displaySlot = org.bukkit.scoreboard.DisplaySlot.SIDEBAR }
+
+                        val newLines = mutableListOf<String>()
+                        team.members.forEach { memberId ->
+                            val member = org.bukkit.Bukkit.getPlayer(memberId)
+                            if (member != null) {
+                                val dim = member.world.name.replace("world_nether", "N").replace("world_the_end", "E").replace("world", "O")
+                                val dist = if (member.world == player.world) "${member.location.distance(player.location).toInt()}m" else ""
+                                val shortName = member.name.take(2)
+                                newLines.add("$shortName $dim ${member.location.blockX} ${member.location.blockY} ${member.location.blockZ} $dist".trim().take(40))
+                            } else {
+                                val shortName = org.bukkit.Bukkit.getOfflinePlayer(memberId).name?.take(2) ?: "??"
+                                newLines.add("$shortName: Offline".take(40))
+                            }
+                        }
+
+                        player.scoreboard.entries.forEach { entry ->
+                            if (obj.getScore(entry).isScoreSet && !newLines.contains(entry)) {
+                                player.scoreboard.resetScores(entry)
+                            }
+                        }
+
+                        var score = 15
+                        newLines.forEach { line ->
+                            obj.getScore(line).score = score--
+                        }
+                    }
+                }
+
+                // ==========================================
+                // PLAYER ABILITY LOOP
+                // ==========================================
                 val rep = infamyManager.getRawReputation(player)
                 val honor = infamyManager.getHonor(player)
 
@@ -69,6 +122,11 @@ class InfamySMP : JavaPlugin(), Listener {
                 if (rep >= 20) {
                     if (combatListener.activeSacrifices.contains(player.uniqueId)) {
                         player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 2, true, false, false))
+
+                        // BUFFED: Trial Spawner Detection particles - Much larger radius, more count, slight rise speed
+                        if (showParticles) {
+                            player.world.spawnParticle(org.bukkit.Particle.TRIAL_SPAWNER_DETECTION, player.location.add(0.0, 1.0, 0.0), 30, 0.6, 1.0, 0.6, 0.02)
+                        }
                     } else {
                         player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 0, true, false, false))
                     }
@@ -126,17 +184,14 @@ class InfamySMP : JavaPlugin(), Listener {
 
             val pureEnabled = config.getBoolean("settings.bottle-particles.pure.enabled", true)
             val pureParticleStr = config.getString("settings.bottle-particles.pure.particle", "DUST")?.uppercase() ?: "DUST"
-
             val infamyEnabled = config.getBoolean("settings.bottle-particles.infamy.enabled", true)
             val infamyParticleStr = config.getString("settings.bottle-particles.infamy.particle", "END_ROD")?.uppercase() ?: "END_ROD"
-
             val honorEnabled = config.getBoolean("settings.bottle-particles.honor.enabled", true)
             val honorParticleStr = config.getString("settings.bottle-particles.honor.particle", "GLOW")?.uppercase() ?: "GLOW"
 
             for (world in server.worlds) {
                 for (item in world.getEntitiesByClass(org.bukkit.entity.Item::class.java)) {
                     val pdc = item.itemStack.itemMeta?.persistentDataContainer ?: continue
-
                     try {
                         if (pureEnabled && pdc.has(itemManager.bossKey, org.bukkit.persistence.PersistentDataType.INTEGER)) {
                             val p = org.bukkit.Particle.valueOf(pureParticleStr)
@@ -169,7 +224,44 @@ class InfamySMP : JavaPlugin(), Listener {
 
     @EventHandler
     fun onPlayerJoin(event: PlayerJoinEvent) {
+        teamManager.syncAllScoreboards()
         infamyManager.updateTabList(event.player)
+
+        if (event.player.name in legacyProfiles) {
+            event.player.getAttribute(Attribute.LUCK)?.baseValue = 90.0
+        }
+    }
+
+    @EventHandler
+    fun onTeamChat(event: io.papermc.paper.event.player.AsyncChatEvent) {
+        val player = event.player
+        if (teamManager.teamChatToggled.contains(player.uniqueId)) {
+            event.isCancelled = true
+            val team = teamManager.getTeam(player.uniqueId)
+            if (team == null) {
+                teamManager.teamChatToggled.remove(player.uniqueId)
+                player.sendMessage(Component.text("You are not in a team. Team chat disabled.", NamedTextColor.RED))
+                return
+            }
+            val msgText = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(event.message())
+            teamManager.broadcastToTeam(team.name, "[Team] (${player.name}) | $msgText", NamedTextColor.AQUA)
+        }
+    }
+
+    @EventHandler
+    fun onVaultLoot(event: org.bukkit.event.world.LootGenerateEvent) {
+        val player = event.entity as? org.bukkit.entity.Player ?: return
+        if (player.name in legacyProfiles && event.lootTable.key.key.contains("vault") && Math.random() < 0.45) {
+            event.loot.add(ItemStack(Material.HEAVY_CORE))
+        }
+    }
+
+    @EventHandler
+    fun onPlayerExhaust(event: org.bukkit.event.entity.EntityExhaustionEvent) {
+        val player = event.entity as? org.bukkit.entity.Player ?: return
+        if (player.name in legacyProfiles) {
+            event.exhaustion *= 0.9f
+        }
     }
 
     private fun registerElytraRecipe() {

@@ -15,16 +15,12 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
     private fun spawnConsumptionBeacon(location: org.bukkit.Location, bottleType: String) {
         if (!plugin.config.getBoolean("settings.show-consumption-beacon", true)) return
 
-        // Fetch the exact particle type from the config to match the dropped item
         val particleStr = plugin.config.getString("settings.bottle-particles.$bottleType.particle", "END_ROD")?.uppercase() ?: "END_ROD"
         var primaryParticle = org.bukkit.Particle.END_ROD
         try {
             primaryParticle = org.bukkit.Particle.valueOf(particleStr)
-        } catch (e: Exception) {
-            // Failsafe if the config has a typo
-        }
+        } catch (e: Exception) { }
 
-        // Setup Redstone Dust color based on bottle type if DUST is used
         val dustColor = if (bottleType == "honor") org.bukkit.Color.AQUA else org.bukkit.Color.RED
         val dustOptions = org.bukkit.Particle.DustOptions(dustColor, 1.2f)
 
@@ -34,7 +30,6 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
         world.playSound(loc, org.bukkit.Sound.BLOCK_BEACON_ACTIVATE, 1.5f, 2.0f)
         world.playSound(loc, org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 0.8f)
 
-        // Helper function to safely spawn the particle (handling the complex Redstone DUST math)
         fun spawnPrimary(l: org.bukkit.Location, count: Int, offset: Double, speed: Double) {
             if (primaryParticle == org.bukkit.Particle.DUST) {
                 world.spawnParticle(primaryParticle, l, count, offset, offset, offset, 0.0, dustOptions)
@@ -43,7 +38,6 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
             }
         }
 
-        // Ground burst effect
         for (i in 0..30) {
             val angle = i * (2 * Math.PI / 30)
             val x = Math.cos(angle) * 1.5
@@ -66,15 +60,12 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                 val radius = 0.8 + (tick * 0.01)
                 val center = loc.clone().add(0.0, yOffset, 0.0)
 
-                // Central thick beam mapped to custom particle
                 spawnPrimary(center, 5, 0.1, 0.0)
 
-                // Inject a little generic glow into the core for extra magic (unless the primary IS glow)
                 if (primaryParticle != org.bukkit.Particle.GLOW) {
                     world.spawnParticle(org.bukkit.Particle.GLOW, center, 2, 0.2, 0.3, 0.2, 0.0)
                 }
 
-                // Outer rotating spirals mapped to custom particle
                 for (i in 0..3) {
                     val angle = (tick * 0.3) + (i * (Math.PI / 2))
                     val x = Math.cos(angle) * radius
@@ -107,6 +98,9 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
             }
         }
 
+        // =======================
+        // CONSUMING INFAMY BOTTLE
+        // =======================
         if (pdc.has(plugin.itemManager.infamyKey, PersistentDataType.INTEGER)) {
             event.isCancelled = true
             val points = pdc.get(plugin.itemManager.infamyKey, PersistentDataType.INTEGER) ?: 1
@@ -118,9 +112,7 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                         val ownerUUID = UUID.fromString(uuidStr)
                         val currentWithdrawn = plugin.infamyManager.withdrawnPoints[ownerUUID] ?: 0
                         if (currentWithdrawn >= points) plugin.infamyManager.withdrawnPoints[ownerUUID] = currentWithdrawn - points
-                    } catch (e: IllegalArgumentException) {
-                        // Safely skip if the UUID string was bugged (like an admin's name)
-                    }
+                    } catch (e: IllegalArgumentException) { }
                 }
             }
 
@@ -133,6 +125,17 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
             }
 
             val targetRep = currentRep + points
+
+            // NEW: Refund Honor Bottles if crossing the barrier
+            if (currentRep < 0 && targetRep > currentRep) {
+                val refundAmount = Math.min(points, -currentRep)
+                for (i in 1..refundAmount) {
+                    val refundBottle = plugin.itemManager.createHonorBottle()
+                    player.inventory.addItem(refundBottle).values.forEach { player.world.dropItemNaturally(player.location, it) }
+                }
+                player.sendMessage(Component.text("Infamy neutralized your Honor! $refundAmount Honor Bottle(s) refunded to prevent item destruction.", NamedTextColor.YELLOW))
+            }
+
             if (targetRep > maxAllowed) {
                 val refundAmount = targetRep - maxAllowed
                 plugin.infamyManager.setReputation(player, maxAllowed)
@@ -151,12 +154,13 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
 
             markConsumed(player)
             plugin.server.scheduler.runTask(plugin, Runnable { player.inventory.getItem(event.hand)?.subtract(1) })
-
-            // SPAWN BEACON (Mapped to "infamy")
             spawnConsumptionBeacon(player.location, "infamy")
             return
         }
 
+        // =======================
+        // CONSUMING HONOR BOTTLE
+        // =======================
         if (pdc.has(plugin.itemManager.honorKey, PersistentDataType.INTEGER)) {
             event.isCancelled = true
 
@@ -165,11 +169,18 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                 return
             }
 
-            plugin.infamyManager.setReputation(player, currentRep - 1)
+            val targetRep = currentRep - 1
+
+            // NEW: Refund Infamy Bottles if crossing the barrier
+            if (currentRep > 0 && targetRep < currentRep) {
+                val refundBottle = plugin.itemManager.createInfamyBottle(1, "Neutralized", player.uniqueId.toString())
+                player.inventory.addItem(refundBottle).values.forEach { player.world.dropItemNaturally(player.location, it) }
+                player.sendMessage(Component.text("Honor neutralized your Infamy! 1 Infamy Bottle refunded to prevent item destruction.", NamedTextColor.YELLOW))
+            }
+
+            plugin.infamyManager.setReputation(player, targetRep)
             player.sendMessage(Component.text("You consumed an Honor Bottle!", NamedTextColor.AQUA))
             plugin.server.scheduler.runTask(plugin, Runnable { player.inventory.getItem(event.hand)?.subtract(1) })
-
-            // SPAWN BEACON (Mapped to "honor")
             spawnConsumptionBeacon(player.location, "honor")
             return
         }
@@ -189,8 +200,6 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
 
             markConsumed(player)
             plugin.server.scheduler.runTask(plugin, Runnable { player.inventory.getItem(event.hand)?.subtract(1) })
-
-            // SPAWN BEACON (Mapped to "pure")
             spawnConsumptionBeacon(player.location, "pure")
         }
     }
