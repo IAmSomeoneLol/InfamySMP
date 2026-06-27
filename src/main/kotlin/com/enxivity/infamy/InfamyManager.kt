@@ -128,9 +128,11 @@ class InfamyManager(private val plugin: InfamySMP) {
                     forceUnlock21 = false
                     Bukkit.getOnlinePlayers().filter { getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(Component.text("${player.name} has ascended to Level 21!", net.kyori.adventure.text.format.NamedTextColor.DARK_RED)) }
 
-                    if (plugin.teamManager.getTeam(player.uniqueId) != null) {
+                    // FIXED: Now properly evaluates team size before kicking
+                    val team = plugin.teamManager.getTeam(player.uniqueId)
+                    if (team != null && team.members.size > 2) {
                         plugin.teamManager.removePlayerHandleLeader(player.uniqueId)
-                        player.sendMessage(Component.text("You have been cast out of your team. The Boss stands alone.", net.kyori.adventure.text.format.NamedTextColor.DARK_RED))
+                        player.sendMessage(Component.text("Your team was too large, so you have been cast out. The Boss can only have 1 teammate.", net.kyori.adventure.text.format.NamedTextColor.DARK_RED))
                     }
                 } else {
                     player.sendMessage(Component.text("You reached 21 Infamy, but the title is locked by the current Boss!", net.kyori.adventure.text.format.NamedTextColor.RED))
@@ -140,9 +142,11 @@ class InfamyManager(private val plugin: InfamySMP) {
                 currentBoss = player.uniqueId
                 Bukkit.getOnlinePlayers().filter { getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(Component.text("${player.name} has become the Most Infamous Player!", net.kyori.adventure.text.format.NamedTextColor.DARK_RED)) }
 
-                if (plugin.teamManager.getTeam(player.uniqueId) != null) {
+                // FIXED: Evaluates team size
+                val team = plugin.teamManager.getTeam(player.uniqueId)
+                if (team != null && team.members.size > 2) {
                     plugin.teamManager.removePlayerHandleLeader(player.uniqueId)
-                    player.sendMessage(Component.text("You have been cast out of your team. The Boss stands alone.", net.kyori.adventure.text.format.NamedTextColor.DARK_RED))
+                    player.sendMessage(Component.text("Your team was too large, so you have been cast out. The Boss can only have 1 teammate.", net.kyori.adventure.text.format.NamedTextColor.DARK_RED))
                 }
                 reputationData[player.uniqueId] = 21
             } else {
@@ -158,7 +162,6 @@ class InfamyManager(private val plugin: InfamySMP) {
 
         val newPrefix = getPrefixText(reputationData[player.uniqueId] ?: 0)
 
-        // NEW: Check if the Title updated, and trigger Screen UI & Global Guardian Sound
         if (oldPrefix != newPrefix) {
             val titleComp = LegacyComponentSerializer.legacyAmpersand().deserialize(newPrefix)
             val subComp = Component.text("You've earned a new title with your levels.", net.kyori.adventure.text.format.NamedTextColor.GRAY)

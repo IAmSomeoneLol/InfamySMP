@@ -26,7 +26,6 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
 
     private fun isAdmin(sender: CommandSender): Boolean = sender.isOp || sender.hasPermission("infamysmp.admin")
 
-    // Mapping to safely autocomplete and build strings
     private val colorMap = mapOf(
         "black" to "&0", "dark_blue" to "&1", "dark_green" to "&2", "dark_aqua" to "&3",
         "dark_red" to "&4", "dark_purple" to "&5", "gold" to "&6", "gray" to "&7",
@@ -96,7 +95,6 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             }
         } else if (args.size >= 4) {
             if (args[0].lowercase() == "team" && args[1].lowercase() == "color") {
-                // Allows infinite stacking of formats (e.g. bold italic strikethrough)
                 completions.addAll(formatMap.keys.filter { it.startsWith(args.last().lowercase()) && !args.contains(it) })
             }
         }
@@ -337,9 +335,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
 
         when (args[1].lowercase()) {
             "create" -> {
-                if (plugin.infamyManager.getRawReputation(sender) >= 21) {
-                    return sender.sendMessage(Component.text("The Boss stands alone. You cannot create a team.", NamedTextColor.RED))
-                }
+                // FIXED: Boss CAN create teams now
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy team create <name>", NamedTextColor.RED))
                 if (plugin.teamManager.createTeam(sender, args[2])) sender.sendMessage(Component.text("Team '${args[2]}' created!", NamedTextColor.GREEN)) else sender.sendMessage(Component.text("You are already in a team, or that name is taken.", NamedTextColor.RED))
             }
@@ -348,16 +344,30 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy team invite <player>", NamedTextColor.RED))
                 val target = Bukkit.getPlayer(args[2]) ?: return sender.sendMessage(Component.text("Player not found.", NamedTextColor.RED))
                 val myTeam = plugin.teamManager.getTeam(sender.uniqueId) ?: return sender.sendMessage(Component.text("You are not in a team!", NamedTextColor.RED))
-                if (plugin.infamyManager.getRawReputation(sender) >= 21 && myTeam.members.size >= 2) return sender.sendMessage(Component.text("As the Boss, you cannot have more than 1 teammate!", NamedTextColor.RED))
+
+                // FIXED: Checks if team has a Boss, blocks if team already has 2 members
+                val hasBoss = myTeam.members.any { plugin.infamyManager.getRawReputationByUUID(it) >= 21 }
+                if (hasBoss && myTeam.members.size >= 2) return sender.sendMessage(Component.text("A team with the Boss cannot have more than 2 members!", NamedTextColor.RED))
+
                 if (plugin.teamManager.sendInvite(myTeam.name, target.uniqueId)) {
                     sender.sendMessage(Component.text("Invite sent to ${target.name}!", NamedTextColor.GREEN))
                     target.sendMessage(Component.text("${sender.name} invited you to join '${myTeam.name}'! Use /infamy team accept", NamedTextColor.AQUA))
                 } else sender.sendMessage(Component.text("${target.name} is already in a team!", NamedTextColor.RED))
             }
             "accept" -> {
-                if (plugin.infamyManager.getRawReputation(sender) >= 21) {
-                    return sender.sendMessage(Component.text("The Boss stands alone. You cannot join a team.", NamedTextColor.RED))
+                val targetTeam = plugin.teamManager.getPendingInviteTeam(sender.uniqueId)
+                if (targetTeam == null) {
+                    return sender.sendMessage(Component.text("No pending invites.", NamedTextColor.RED))
                 }
+
+                // FIXED: Block joining if the team has/gets a Boss and exceeds 2 members
+                val isSenderBoss = plugin.infamyManager.getRawReputation(sender) >= 21
+                val teamHasBoss = targetTeam.members.any { plugin.infamyManager.getRawReputationByUUID(it) >= 21 }
+
+                if ((isSenderBoss || teamHasBoss) && targetTeam.members.size >= 2) {
+                    return sender.sendMessage(Component.text("A team with the Boss cannot have more than 2 members!", NamedTextColor.RED))
+                }
+
                 if (plugin.teamManager.acceptInvite(sender)) sender.sendMessage(Component.text("You joined the team!", NamedTextColor.GREEN)) else sender.sendMessage(Component.text("No pending invites.", NamedTextColor.RED))
             }
             "decline" -> { plugin.teamManager.declineInvite(sender.uniqueId); sender.sendMessage(Component.text("Invite declined.", NamedTextColor.YELLOW)) }

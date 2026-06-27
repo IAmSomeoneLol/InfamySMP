@@ -70,14 +70,12 @@ class TeamManager(private val plugin: InfamySMP) {
     }
 
     fun syncAllScoreboards() {
-        // GHOST TEAM PURGER: Erases corrupted tags from Minecraft's world/data/scoreboard.dat
         val mainBoard = Bukkit.getScoreboardManager().mainScoreboard
         mainBoard.teams.filter { it.name.startsWith("inf_") }.forEach { it.unregister() }
 
         if (!plugin.config.getBoolean("settings.nametag-team-color", true)) return
 
         for (player in Bukkit.getOnlinePlayers()) {
-            // Isolates player onto a new scoreboard so sidebars don't conflict, and stops Main Scoreboard pollution
             if (player.scoreboard == mainBoard) {
                 player.scoreboard = Bukkit.getScoreboardManager().newScoreboard
             }
@@ -158,6 +156,11 @@ class TeamManager(private val plugin: InfamySMP) {
         }
         syncAllScoreboards()
         return true
+    }
+
+    fun getPendingInviteTeam(target: UUID): TeamData? {
+        val teamName = pendingInvites[target] ?: return null
+        return teams[teamName]
     }
 
     fun sendInvite(teamName: String, target: UUID): Boolean {
