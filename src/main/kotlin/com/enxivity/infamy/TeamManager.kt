@@ -205,7 +205,8 @@ class TeamManager(private val plugin: InfamySMP) {
 
     fun areTeammates(player1: UUID, player2: UUID): Boolean {
         val team1 = playerTeams[player1] ?: return false
-        val team2 = playerTeams[player2] ?: return true
+        // FIXED: Now properly returns false if the second player is not in a team
+        val team2 = playerTeams[player2] ?: return false
         return team1 == team2
     }
 

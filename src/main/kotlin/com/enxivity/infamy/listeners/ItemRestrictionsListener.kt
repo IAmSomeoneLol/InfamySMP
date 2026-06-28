@@ -225,6 +225,23 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         val rep = plugin.infamyManager.getRawReputation(player)
         val honor = plugin.infamyManager.getHonor(player)
 
+        val sbCd = plugin.config.getLong("abilities-config.sword-block.cooldown-seconds", 60)
+        val sbDmgMult = plugin.config.getDouble("abilities-config.sword-block.damage-taken-multiplier", 0.5)
+
+        val shCd = plugin.config.getLong("abilities-config.shield-recovery.cooldown-seconds", 25)
+        val shCost = plugin.config.getDouble("abilities-config.shield-recovery.health-cost", 4.0)
+
+        val blCd = plugin.config.getLong("abilities-config.bleeding-edge.cooldown-seconds", 60)
+        val blTicks = plugin.config.getInt("abilities-config.bleeding-edge.duration-ticks", 5)
+        val blDmg = plugin.config.getDouble("abilities-config.bleeding-edge.damage-per-tick", 1.0)
+
+        val mcCd = plugin.config.getLong("abilities-config.mace-slam.cooldown-seconds", 60)
+        val mcMaxDmg = plugin.config.getDouble("abilities-config.mace-slam.max-splash-damage", 12.0)
+
+        val hcCd = plugin.config.getLong("abilities-config.hellcrush.cooldown-seconds", 900)
+        val hcDur = plugin.config.getLong("abilities-config.hellcrush.duration-seconds", 300)
+        val hcReduction = plugin.config.getDouble("abilities-config.hellcrush.stat-reduction-percentage", 0.5)
+
         fun setSlot(slot: Int, mat: Material, name: String, actDesc: String, descLines: List<String>, reqLvl: Int, hasIt: Boolean, isHonor: Boolean) {
             val item = if (hasIt) ItemStack(mat) else ItemStack(Material.BLACK_STAINED_GLASS_PANE)
             val meta = item.itemMeta ?: return
@@ -248,17 +265,17 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         setSlot(14, Material.BOOK, "Halved Potions", "Activation: Passive (All Potions)", listOf("Due to their good fortune they", "now struggle to take life,", "causing ALL their potion", "durations to be halved."), 9, honor >= 9, true)
         setSlot(15, Material.ENCHANTED_BOOK, "Weapon Fatigue", "Activation: Passive (On hit)", listOf("Due to their good fortune they", "now struggle to take life,", "causing their weapon cooldowns", "to be higher (Sword becomes Axe)."), 12, honor >= 12, true)
 
-        setSlot(28, Material.BOOK, "Sword Block", "Activation: Right-Click with Sword", listOf("The Player Receives the ability to", "block incoming damage with their sword,", "causing half damage to be received.", "(1m Cooldown)"), 3, rep >= 3, false)
-        setSlot(29, Material.BOOK, "Shield Recovery", "Activation: Sneak + Right-Click with Shield", listOf("The Player Receives the ability to", "pull their Shield back up after", "being broken.", "HOWEVER they take half a heart of", "damage. (25s CD)"), 6, rep >= 6, false)
+        setSlot(28, Material.BOOK, "Sword Block", "Activation: Right-Click with Sword", listOf("The Player Receives the ability to", "block incoming damage with their sword,", "taking only ${(sbDmgMult * 100).toInt()}% of the standard damage.", "(${sbCd}s Cooldown)"), 3, rep >= 3, false)
+        setSlot(29, Material.BOOK, "Shield Recovery", "Activation: Sneak + Right-Click with Shield", listOf("The Player Receives the ability to", "pull their Shield back up after", "being broken.", "HOWEVER they take ${shCost/2} hearts of", "damage. (${shCd}s CD)"), 6, rep >= 6, false)
         setSlot(30, Material.BOOK, "Axe Pierce", "Activation: Attack blocking enemy with Axe", listOf("The Player Receives the ability to", "do Damage through Shields with an", "AXE while breaking it", "(Dealing 2 hearts)."), 9, rep >= 9, false)
-        setSlot(31, Material.BOOK, "Double Potions", "Activation: Passive (All Potions)", listOf("The Player Receives DOUBLE TIME", "for EVERY Potion they use."), 12, rep >= 12, false)
+        setSlot(31, Material.BOOK, "Double Potions", "Activation: Passive (All Potions)", listOf("The Player Receives DOUBLE TIME", "for EVERY Potion używane."), 12, rep >= 12, false)
         setSlot(32, Material.BOOK, "Wary Villagers", "Activation: Passive (When trading)", listOf("HOWEVER Villagers now are wary of you,", "giving worse trades.", "", "Level 12: Wary trades", "Level 15: Even worse trades", "Level 20: Max price hikes"), 12, rep >= 12, false)
-        setSlot(33, Material.BOOK, "Passive Resistance", "Activation: Passive", listOf("The Player Receives a PASSIVE", "Resistance 1 Boost."), 15, rep >= 15, false)
+        setSlot(33, Material.BOOK, "Passive Weaving", "Activation: Passive", listOf("The Player Receives a PASSIVE", "Weaving effect (Cobweb traps)."), 15, rep >= 15, false)
         setSlot(34, Material.BOOK, "Bad Fortune", "Activation: Passive (Overrides Fortune)", listOf("HOWEVER With all the sins you have", "committed you now have BAD FORTUNE.", "", "Level 15: Max Fortune 2", "Level 18: Max Fortune 1", "Level 20: No Fortune benefits AT ALL"), 15, rep >= 15, false)
-        setSlot(39, Material.BOOK, "Bleeding Edge", "Activation: Right-Click Diamond/Netherite Sword", listOf("Using any sword above Diamond Tier", "causes the affected player to take", "Half a Heart of damage every SECOND", "lasting 5s (goes through armor &", "gives nausea when ended for 4s).", "(1m CD)"), 18, rep >= 18, false)
+        setSlot(39, Material.BOOK, "Bleeding Edge", "Activation: Right-Click Diamond/Netherite Sword", listOf("Using any sword above Diamond Tier", "causes the affected player to take", "${blDmg/2} hearts of damage every SECOND", "lasting ${blTicks}s (goes through armor &", "gives nausea when ended for 4s).", "(${blCd}s CD)"), 18, rep >= 18, false)
         setSlot(40, Material.BOOK, "Constant Strength", "Activation: Passive", listOf("The Player Receives CONSTANT", "Strength 1 effect."), 20, rep >= 20, false)
-        setSlot(41, Material.BOOK, "Mace Slam", "Activation: Right-Click Mace", listOf("Allows the user to dash directionally", "by right clicking. Landing creates a", "shockwave dealing damage & knockup", "(caps at 6 hearts damage).", "(1m CD)"), 20, rep >= 20, false)
-        setSlot(42, Material.ENCHANTED_BOOK, "Hellcrush (Boss)", "Activation: Sneak + Right-Click (Empty Hand)", listOf("ONLY ONE PLAYER CAN RECEIVE", "Max team size: 2 Members.", "Constant Glowing.", "Activate Strength 3 for 5 Minutes,", "but lose the effects of your Helmet", "as if it was never there. (15m CD)"), 21, rep >= 21, false)
+        setSlot(41, Material.BOOK, "Mace Slam", "Activation: Right-Click Mace", listOf("Allows the user to dash directionally", "by right clicking. Landing creates a", "shockwave dealing damage & knockup", "(caps at ${mcMaxDmg/2} hearts damage).", "(${mcCd}s CD)"), 20, rep >= 20, false)
+        setSlot(42, Material.ENCHANTED_BOOK, "Hellcrush (Boss)", "Activation: Sneak + Right-Click (Empty Hand)", listOf("ONLY ONE PLAYER CAN RECEIVE", "Max team size: 2 Members.", "Constant Glowing.", "Activate Strength 3 for ${hcDur/60} Minutes,", "but lose ${(hcReduction * 100).toInt()}% of the effects of your Helmet", "as if it was broken. (${hcCd/60}m CD)"), 21, rep >= 21, false)
 
         player.openInventory(inv)
     }

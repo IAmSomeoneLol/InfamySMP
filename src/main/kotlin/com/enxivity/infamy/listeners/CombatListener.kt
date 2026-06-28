@@ -88,11 +88,15 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 val now = System.currentTimeMillis()
                 val lastUsed = sacrificeCooldowns[player.uniqueId] ?: 0
 
-                if (now - lastUsed > 900000) {
+                val cdSecs = plugin.config.getLong("abilities-config.hellcrush.cooldown-seconds", 900)
+                val durSecs = plugin.config.getLong("abilities-config.hellcrush.duration-seconds", 300)
+                val hcReduction = plugin.config.getDouble("abilities-config.hellcrush.stat-reduction-percentage", 0.5)
+
+                if (now - lastUsed > cdSecs * 1000L) {
                     sacrificeCooldowns[player.uniqueId] = now
                     activeSacrifices.add(player.uniqueId)
 
-                    msg(player, "Hellcrush Activated! Helmet stats neutralized for 5 minutes of Strength III.", NamedTextColor.DARK_RED)
+                    msg(player, "Hellcrush Activated! Helmet stats reduced by ${(hcReduction * 100).toInt()}% for ${durSecs/60} minutes of Strength III.", NamedTextColor.DARK_RED)
                     player.world.playSound(player.location, Sound.ENTITY_ITEM_BREAK, 1.2f, 0.7f)
 
                     plugin.server.scheduler.runTaskLater(plugin, Runnable {
@@ -103,9 +107,9 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                                 msg(player, "Your Hellcrush fury has faded. Helmet stats restored.", NamedTextColor.GRAY)
                             }
                         }
-                    }, 6000L)
+                    }, durSecs * 20L)
                 } else {
-                    val remaining = (900000 - (now - lastUsed)) / 1000 / 60
+                    val remaining = ((cdSecs * 1000L) - (now - lastUsed)) / 1000 / 60
                     msgCD(player, "Hellcrush is on cooldown! ($remaining mins left)", NamedTextColor.RED)
                 }
             }
@@ -117,20 +121,22 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             if (player.hasCooldown(Material.SHIELD)) {
                 val now = System.currentTimeMillis()
                 val lastUsed = shieldAbilityCooldowns[player.uniqueId] ?: 0
+                val cdSecs = plugin.config.getLong("abilities-config.shield-recovery.cooldown-seconds", 25)
+                val hCost = plugin.config.getDouble("abilities-config.shield-recovery.health-cost", 4.0)
 
-                if (now - lastUsed > 25000) {
+                if (now - lastUsed > cdSecs * 1000L) {
                     shieldAbilityCooldowns[player.uniqueId] = now
                     player.setCooldown(Material.SHIELD, 0)
-                    player.health = (player.health - 1.0).coerceAtLeast(0.0)
+                    player.health = (player.health - hCost).coerceAtLeast(0.0)
 
                     if (plugin.config.getBoolean("settings.show-ability-particles", true)) {
                         player.world.spawnParticle(Particle.ITEM, player.location.add(0.0, 1.0, 0.0), 20, 0.3, 0.3, 0.3, 0.05, ItemStack(Material.SHIELD))
                     }
 
-                    msg(player, "Shield recovered instantly! (-0.5 Hearts)", NamedTextColor.GREEN)
+                    msg(player, "Shield recovered instantly! (-${hCost/2} Hearts)", NamedTextColor.GREEN)
                     player.world.playSound(player.location, Sound.ITEM_SHIELD_BLOCK, 1f, 1.5f)
                 } else {
-                    val remaining = (25000 - (now - lastUsed)) / 1000
+                    val remaining = ((cdSecs * 1000L) - (now - lastUsed)) / 1000
                     msgCD(player, "Shield Recovery on cooldown! (${remaining}s)", NamedTextColor.RED)
                 }
             }
@@ -141,26 +147,29 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         if (item.type.name.endsWith("_SWORD") && rep >= 3) {
             val now = System.currentTimeMillis()
             val lastUsed = swordBlockCooldowns[player.uniqueId] ?: 0
-            if (now - lastUsed > 60000) {
+            val cdSecs = plugin.config.getLong("abilities-config.sword-block.cooldown-seconds", 60)
+            val durSecs = plugin.config.getLong("abilities-config.sword-block.duration-seconds", 5)
+
+            if (now - lastUsed > cdSecs * 1000L) {
                 swordBlockCooldowns[player.uniqueId] = now
-                swordBlockActiveUntil[player.uniqueId] = now + 5000
-                msg(player, "Sword Block armed! 50% damage protection for 5s.", NamedTextColor.GREEN)
+                swordBlockActiveUntil[player.uniqueId] = now + (durSecs * 1000L)
+                msg(player, "Sword Block armed! Guard active for ${durSecs}s.", NamedTextColor.GREEN)
                 player.world.playSound(player.location, Sound.ITEM_SHIELD_BLOCK, 1f, 1.2f)
 
-                // NEW: End Rod Glitter Blast on Activation
                 if (plugin.config.getBoolean("settings.show-ability-particles", true)) {
                     player.world.spawnParticle(Particle.END_ROD, player.location.add(0.0, 1.0, 0.0), 25, 0.4, 0.4, 0.4, 0.1)
                 }
             } else {
-                msgCD(player, "Sword Block on cooldown! (${(60000 - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+                msgCD(player, "Sword Block on cooldown! (${((cdSecs * 1000L) - (now - lastUsed))/1000}s)", NamedTextColor.RED)
             }
         }
 
         if ((item.type == Material.DIAMOND_SWORD || item.type == Material.NETHERITE_SWORD) && rep >= 18) {
             val now = System.currentTimeMillis()
             val lastUsed = bleedCooldowns[player.uniqueId] ?: 0
+            val cdSecs = plugin.config.getLong("abilities-config.bleeding-edge.cooldown-seconds", 60)
 
-            if (now - lastUsed > 60000) {
+            if (now - lastUsed > cdSecs * 1000L) {
                 bleedCooldowns[player.uniqueId] = now
                 activeBleedCharge[player.uniqueId] = now
                 msg(player, "Bleeding Edge primed! Your next strike will inflict bleeding.", NamedTextColor.DARK_RED)
@@ -188,19 +197,22 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                     }
                 }, 80L)
             } else {
-                msgCD(player, "Bleeding Edge on cooldown! (${(60000 - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+                msgCD(player, "Bleeding Edge on cooldown! (${((cdSecs * 1000L) - (now - lastUsed))/1000}s)", NamedTextColor.RED)
             }
         }
 
         if (item.type == Material.MACE && rep >= 20) {
             val now = System.currentTimeMillis()
             val lastUsed = maceCooldowns[player.uniqueId] ?: 0
+            val cdSecs = plugin.config.getLong("abilities-config.mace-slam.cooldown-seconds", 60)
+            val fVel = plugin.config.getDouble("abilities-config.mace-slam.forward-velocity", 1.5)
+            val yVel = plugin.config.getDouble("abilities-config.mace-slam.upward-velocity", 1.4)
 
-            if (now - lastUsed > 60000) {
+            if (now - lastUsed > cdSecs * 1000L) {
                 maceCooldowns[player.uniqueId] = now
                 val startHeight = player.location.y
 
-                player.velocity = player.location.direction.multiply(1.5).setY(1.4)
+                player.velocity = player.location.direction.multiply(fVel).setY(yVel)
                 player.world.playSound(player.location, Sound.ENTITY_ENDER_DRAGON_FLAP, 1.2f, 0.8f)
 
                 msg(player, "Mace Slam activated! Crashing down...", NamedTextColor.DARK_RED)
@@ -228,13 +240,14 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                     }
                 }.runTaskTimer(plugin, 1L, 1L)
             } else {
-                msgCD(player, "Mace Slam on cooldown! (${(60000 - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+                msgCD(player, "Mace Slam on cooldown! (${((cdSecs * 1000L) - (now - lastUsed))/1000}s)", NamedTextColor.RED)
             }
         }
     }
 
     private fun createMaceShockwave(player: Player, startY: Double, showParticles: Boolean) {
         val fallDistance = (startY - player.location.y).coerceAtLeast(1.0)
+        val maxDmg = plugin.config.getDouble("abilities-config.mace-slam.max-splash-damage", 12.0)
 
         if (showParticles) player.world.spawnParticle(Particle.EXPLOSION, player.location, 5)
         player.world.playSound(player.location, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.9f)
@@ -248,7 +261,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 entity.velocity = dir.multiply(1.0).setY(1.4)
 
                 val heightMultiplier = fallDistance * 1.5
-                val damage = heightMultiplier.coerceAtMost(12.0)
+                val damage = heightMultiplier.coerceAtMost(maxDmg)
                 entity.damage(damage, player)
             }
         }
@@ -259,7 +272,8 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         val player = event.entity as? Player ?: return
 
         if (event.cause == EntityDamageEvent.DamageCause.FALL && maceActivePlayers.contains(player.uniqueId)) {
-            event.damage *= 0.75
+            val reduction = plugin.config.getDouble("abilities-config.mace-slam.fall-damage-reduction", 0.25)
+            event.damage *= (1.0 - reduction)
         }
     }
 
@@ -286,7 +300,8 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             if (victimRep >= 3) {
                 val expires = swordBlockActiveUntil[victim.uniqueId] ?: 0
                 if (now <= expires && victim.inventory.itemInMainHand.type.name.endsWith("_SWORD")) {
-                    event.damage *= 0.5
+                    val multiplier = plugin.config.getDouble("abilities-config.sword-block.damage-taken-multiplier", 0.5)
+                    event.damage *= multiplier
                     victim.world.playSound(victim.location, Sound.BLOCK_ANVIL_LAND, 0.5f, 1.5f)
 
                     if (plugin.config.getBoolean("settings.show-ability-particles", true)) {
@@ -300,8 +315,10 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 if (helmet != null) {
                     val protLevel = helmet.getEnchantmentLevel(Enchantment.PROTECTION)
                     if (protLevel > 0) {
-                        val reduction = (protLevel * 0.04).coerceAtMost(0.80)
-                        event.damage *= (1.0 / (1.0 - reduction))
+                        val hcReduction = plugin.config.getDouble("abilities-config.hellcrush.stat-reduction-percentage", 0.5)
+                        // Reads the dynamic config. Base protection is 4% (0.04) per level.
+                        val reductionToRemove = (protLevel * 0.04 * hcReduction).coerceAtMost(0.80)
+                        event.damage *= (1.0 / (1.0 - reductionToRemove))
                     }
                 }
             }
@@ -324,18 +341,23 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
             var ticks = 0
             val showParticles = plugin.config.getBoolean("settings.show-ability-particles", true)
+            val maxTicks = plugin.config.getInt("abilities-config.bleeding-edge.duration-ticks", 5)
+            val dmgTick = plugin.config.getDouble("abilities-config.bleeding-edge.damage-per-tick", 1.0)
+            val iframeTicks = plugin.config.getInt("abilities-config.bleeding-edge.iframe-ticks", 10)
 
             val bleedTask = object : BukkitRunnable() {
                 override fun run() {
                     if (victim.isDead || !victim.isValid) { cancel(); return }
 
-                    if (ticks < 5) {
-                        val targetHealth = (victim.health - 1.0).coerceAtLeast(0.0)
+                    if (ticks < maxTicks) {
+                        val targetHealth = (victim.health - dmgTick).coerceAtLeast(0.0)
                         if (targetHealth <= 0.0) {
                             victim.damage(100.0, attacker)
                         } else {
                             victim.health = targetHealth
                             victim.playHurtAnimation(0f)
+
+                            victim.noDamageTicks = iframeTicks
                         }
                         victim.world.spawnParticle(Particle.DAMAGE_INDICATOR, victim.location.add(0.0, 1.0, 0.0), 5)
 

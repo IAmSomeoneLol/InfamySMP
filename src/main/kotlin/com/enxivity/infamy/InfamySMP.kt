@@ -67,11 +67,9 @@ class InfamySMP : JavaPlugin(), Listener {
         server.scheduler.runTaskTimer(this, Runnable {
             val easyCoordEnabled = config.getBoolean("settings.team-easy-coord", true)
             val showParticles = config.getBoolean("settings.show-ability-particles", true)
+            val hcReduction = config.getDouble("abilities-config.hellcrush.stat-reduction-percentage", 0.5)
 
             for (player in server.onlinePlayers) {
-                // ==========================================
-                // SIDEBAR COORDS TRACKER
-                // ==========================================
                 if (!easyCoordEnabled && teamManager.coordsScoreboardToggled.contains(player.uniqueId)) {
                     teamManager.coordsScoreboardToggled.remove(player.uniqueId)
                     player.scoreboard.getObjective("teamCoords")?.unregister()
@@ -110,20 +108,15 @@ class InfamySMP : JavaPlugin(), Listener {
                     }
                 }
 
-                // ==========================================
-                // PLAYER ABILITY LOOP
-                // ==========================================
                 val rep = infamyManager.getRawReputation(player)
                 val honor = infamyManager.getHonor(player)
 
-                if (rep >= 15) player.addPotionEffect(PotionEffect(PotionEffectType.RESISTANCE, 60, 0, true, false, false))
+                if (rep >= 15) player.addPotionEffect(PotionEffect(PotionEffectType.WEAVING, 60, 0, true, false, false))
                 if (rep >= 21) player.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, 60, 0, true, false, false))
 
                 if (rep >= 20) {
                     if (combatListener.activeSacrifices.contains(player.uniqueId)) {
                         player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 2, true, false, false))
-
-                        // BUFFED: Trial Spawner Detection particles - Much larger radius, more count, slight rise speed
                         if (showParticles) {
                             player.world.spawnParticle(org.bukkit.Particle.TRIAL_SPAWNER_DETECTION, player.location.add(0.0, 1.0, 0.0), 30, 0.6, 1.0, 0.6, 0.02)
                         }
@@ -150,8 +143,10 @@ class InfamySMP : JavaPlugin(), Listener {
                     }
                     armorAttr?.modifiers?.find { it.key == hellcrushArmorKey }?.let { armorAttr.removeModifier(it) }
                     toughAttr?.modifiers?.find { it.key == hellcrushToughKey }?.let { toughAttr.removeModifier(it) }
-                    if (aVal > 0) armorAttr?.addModifier(AttributeModifier(hellcrushArmorKey, -aVal, AttributeModifier.Operation.ADD_NUMBER))
-                    if (tVal > 0) toughAttr?.addModifier(AttributeModifier(hellcrushToughKey, -tVal, AttributeModifier.Operation.ADD_NUMBER))
+
+                    // Reads percentage from config (e.g. 0.5 for 50%, 1.0 for 100%)
+                    if (aVal > 0) armorAttr?.addModifier(AttributeModifier(hellcrushArmorKey, -(aVal * hcReduction), AttributeModifier.Operation.ADD_NUMBER))
+                    if (tVal > 0) toughAttr?.addModifier(AttributeModifier(hellcrushToughKey, -(tVal * hcReduction), AttributeModifier.Operation.ADD_NUMBER))
                 } else {
                     armorAttr?.modifiers?.find { it.key == hellcrushArmorKey }?.let { armorAttr.removeModifier(it) }
                     toughAttr?.modifiers?.find { it.key == hellcrushToughKey }?.let { toughAttr.removeModifier(it) }

@@ -29,6 +29,8 @@ class InfamyManager(private val plugin: InfamySMP) {
     private val reputationData = mutableMapOf<UUID, Int>()
     var currentBoss: UUID? = null
     var forceUnlock21: Boolean = false
+    var is21LockedByPure: Boolean = false // Track if level 21 ascension requires a pure bottle
+    var isPureBottleBypass: Boolean = false // Temporary execution flag for pure bottle handling
 
     val playerKills = mutableMapOf<UUID, Int>()
     val playerDeaths = mutableMapOf<UUID, Int>()
@@ -43,6 +45,7 @@ class InfamyManager(private val plugin: InfamySMP) {
 
         config.set("reputation", reputationData.mapKeys { it.key.toString() })
         config.set("boss", currentBoss?.toString())
+        config.set("is21LockedByPure", is21LockedByPure)
         config.set("kills", playerKills.mapKeys { it.key.toString() })
         config.set("deaths", playerDeaths.mapKeys { it.key.toString() })
         config.set("withdrawn", withdrawnPoints.mapKeys { it.key.toString() })
@@ -66,6 +69,7 @@ class InfamyManager(private val plugin: InfamySMP) {
 
         config.getConfigurationSection("reputation")?.getValues(false)?.forEach { (k, v) -> reputationData[UUID.fromString(k)] = (v as Number).toInt() }
         config.getString("boss")?.let { currentBoss = UUID.fromString(it) }
+        is21LockedByPure = config.getBoolean("is21LockedByPure", false)
         config.getConfigurationSection("kills")?.getValues(false)?.forEach { (k, v) -> playerKills[UUID.fromString(k)] = (v as Number).toInt() }
         config.getConfigurationSection("deaths")?.getValues(false)?.forEach { (k, v) -> playerDeaths[UUID.fromString(k)] = (v as Number).toInt() }
         config.getConfigurationSection("withdrawn")?.getValues(false)?.forEach { (k, v) -> withdrawnPoints[UUID.fromString(k)] = (v as Number).toInt() }
@@ -103,6 +107,7 @@ class InfamyManager(private val plugin: InfamySMP) {
 
     fun refreshBossLock() {
         forceUnlock21 = true
+        is21LockedByPure = false // Wipe the locking restriction state so standard level-ups work again
     }
 
     fun forceRemoveBoss() {
@@ -117,18 +122,42 @@ class InfamyManager(private val plugin: InfamySMP) {
         saveData()
     }
 
+    // Explicit function you can call inside your item/bottle consumer listener if desired
+    fun promoteToLevel21ViaPure(player: Player) {
+        isPureBottleBypass = true
+        setReputation(player, 21)
+        isPureBottleBypass = false
+    }
+
     fun setReputation(player: Player, amount: Int) {
         val oldPrefix = getPrefixText(getRawReputation(player))
         val finalAmount = amount.coerceIn(-12, 21)
 
         if (finalAmount >= 21) {
+            // Safety Check: Verify hand contents to automatically capture usage if explicit helper method wasn't routed
+            val mainHand = player.inventory.itemInMainHand
+            val offHand = player.inventory.itemInOffHand
+            val holdingPure = (mainHand.hasItemMeta() && mainHand.itemMeta.hasDisplayName() &&
+                    LegacyComponentSerializer.legacyAmpersand().serialize(mainHand.itemMeta.displayName()!!).contains("Pure Infamy", ignoreCase = true)) ||
+                    (offHand.hasItemMeta() && offHand.itemMeta.hasDisplayName() &&
+                            LegacyComponentSerializer.legacyAmpersand().serialize(offHand.itemMeta.displayName()!!).contains("Pure Infamy", ignoreCase = true))
+
+            val hasBypassPermitted = isPureBottleBypass || holdingPure
+
+            if (is21LockedByPure && !hasBypassPermitted) {
+                player.sendMessage(Component.text("Level 21 is currently locked! You must consume a Pure Infamy Bottle to ascend.", net.kyori.adventure.text.format.NamedTextColor.RED))
+                reputationData[player.uniqueId] = 20
+                updateTabList(player)
+                return
+            }
+
             if (currentBoss != null && currentBoss != player.uniqueId) {
                 if (forceUnlock21) {
                     reputationData[player.uniqueId] = 21
                     forceUnlock21 = false
+                    is21LockedByPure = true
                     Bukkit.getOnlinePlayers().filter { getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(Component.text("${player.name} has ascended to Level 21!", net.kyori.adventure.text.format.NamedTextColor.DARK_RED)) }
 
-                    // FIXED: Now properly evaluates team size before kicking
                     val team = plugin.teamManager.getTeam(player.uniqueId)
                     if (team != null && team.members.size > 2) {
                         plugin.teamManager.removePlayerHandleLeader(player.uniqueId)
@@ -140,9 +169,9 @@ class InfamyManager(private val plugin: InfamySMP) {
                 }
             } else if (currentBoss != player.uniqueId) {
                 currentBoss = player.uniqueId
+                is21LockedByPure = true
                 Bukkit.getOnlinePlayers().filter { getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(Component.text("${player.name} has become the Most Infamous Player!", net.kyori.adventure.text.format.NamedTextColor.DARK_RED)) }
 
-                // FIXED: Evaluates team size
                 val team = plugin.teamManager.getTeam(player.uniqueId)
                 if (team != null && team.members.size > 2) {
                     plugin.teamManager.removePlayerHandleLeader(player.uniqueId)
@@ -151,6 +180,7 @@ class InfamyManager(private val plugin: InfamySMP) {
                 reputationData[player.uniqueId] = 21
             } else {
                 reputationData[player.uniqueId] = 21
+                is21LockedByPure = true
             }
         } else {
             if (finalAmount < 21 && currentBoss == player.uniqueId) {

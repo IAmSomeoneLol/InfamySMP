@@ -38,7 +38,32 @@ custom-model-data: # Do not touch this, used for the Numbering of Textures on In
   honor_bottle: 10002
   boss_bottle: 10003
 
-# (Keep your infamy_abilities, honor_abilities, and elytra-recipe below this untouched!)
+# ==========================================
+# Ability Balancing Configuration
+# ==========================================
+abilities-config:
+  sword-block:
+    cooldown-seconds: 60
+    duration-seconds: 5
+    damage-taken-multiplier: 0.5 # 50% damage block
+  shield-recovery:
+    cooldown-seconds: 25 # 25 seconds
+    health-cost: 4.0 # 4.0 = 2 Hearts
+  bleeding-edge:
+    cooldown-seconds: 60 # 1 minute
+    duration-ticks: 5 # 5 seconds
+    damage-per-tick: 1.0 # 1.0 = Half a Heart
+    iframe-ticks: 10 # 10 ticks = 0.5
+  mace-slam:
+    cooldown-seconds: 60 # 1 minutez
+    forward-velocity: 1.5 # forward velocity when aiming dead ground forward
+    upward-velocity: 1.4 # 1.4 - 12 blocks high vertical
+    max-splash-damage: 12.0 # 12.0 = 6 Hearts
+    fall-damage-reduction: 0.25 # 0.25 = 25% less fall damage taken
+  hellcrush:
+    cooldown-seconds: 900 # 15 minutes
+    duration-seconds: 300 # 5 minutes
+    stat-reduction-percentage: 0.5 # 0.5 = 50%, 1.0 = 100%, 0.1 = 10%
 
 # ==========================================
 # Infamy Mechanics (Positive Points)
