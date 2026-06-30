@@ -63,7 +63,8 @@ abilities-config:
   hellcrush:
     cooldown-seconds: 900 # 15 minutes
     duration-seconds: 300 # 5 minutes
-    stat-reduction-percentage: 0.5 # 0.5 = 50%, 1.0 = 100%, 0.1 = 10%
+    base-stat-reduction-percentage: 0.4 # 40%
+    enchant-reduction-percentage: 0.6 # 60%
 
 # ==========================================
 # Infamy Mechanics (Positive Points)

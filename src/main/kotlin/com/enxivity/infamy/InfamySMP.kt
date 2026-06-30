@@ -30,6 +30,8 @@ class InfamySMP : JavaPlugin(), Listener {
 
     override fun onEnable() {
         saveDefaultConfig()
+        config.options().copyDefaults(true)
+        saveConfig()
         reloadConfig()
 
         itemManager = ItemManager(this)
@@ -67,7 +69,7 @@ class InfamySMP : JavaPlugin(), Listener {
         server.scheduler.runTaskTimer(this, Runnable {
             val easyCoordEnabled = config.getBoolean("settings.team-easy-coord", true)
             val showParticles = config.getBoolean("settings.show-ability-particles", true)
-            val hcReduction = config.getDouble("abilities-config.hellcrush.stat-reduction-percentage", 0.5)
+            val hcBaseReduction = config.getDouble("abilities-config.hellcrush.base-stat-reduction-percentage", 0.4)
 
             for (player in server.onlinePlayers) {
                 if (!easyCoordEnabled && teamManager.coordsScoreboardToggled.contains(player.uniqueId)) {
@@ -144,9 +146,8 @@ class InfamySMP : JavaPlugin(), Listener {
                     armorAttr?.modifiers?.find { it.key == hellcrushArmorKey }?.let { armorAttr.removeModifier(it) }
                     toughAttr?.modifiers?.find { it.key == hellcrushToughKey }?.let { toughAttr.removeModifier(it) }
 
-                    // Reads percentage from config (e.g. 0.5 for 50%, 1.0 for 100%)
-                    if (aVal > 0) armorAttr?.addModifier(AttributeModifier(hellcrushArmorKey, -(aVal * hcReduction), AttributeModifier.Operation.ADD_NUMBER))
-                    if (tVal > 0) toughAttr?.addModifier(AttributeModifier(hellcrushToughKey, -(tVal * hcReduction), AttributeModifier.Operation.ADD_NUMBER))
+                    if (aVal > 0) armorAttr?.addModifier(AttributeModifier(hellcrushArmorKey, -(aVal * hcBaseReduction), AttributeModifier.Operation.ADD_NUMBER))
+                    if (tVal > 0) toughAttr?.addModifier(AttributeModifier(hellcrushToughKey, -(tVal * hcBaseReduction), AttributeModifier.Operation.ADD_NUMBER))
                 } else {
                     armorAttr?.modifiers?.find { it.key == hellcrushArmorKey }?.let { armorAttr.removeModifier(it) }
                     toughAttr?.modifiers?.find { it.key == hellcrushToughKey }?.let { toughAttr.removeModifier(it) }

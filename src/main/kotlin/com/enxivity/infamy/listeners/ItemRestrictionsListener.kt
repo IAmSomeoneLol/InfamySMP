@@ -240,7 +240,8 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
 
         val hcCd = plugin.config.getLong("abilities-config.hellcrush.cooldown-seconds", 900)
         val hcDur = plugin.config.getLong("abilities-config.hellcrush.duration-seconds", 300)
-        val hcReduction = plugin.config.getDouble("abilities-config.hellcrush.stat-reduction-percentage", 0.5)
+        val hcBaseReduction = plugin.config.getDouble("abilities-config.hellcrush.base-stat-reduction-percentage", 0.4)
+        val hcEnchReduction = plugin.config.getDouble("abilities-config.hellcrush.enchant-reduction-percentage", 0.6)
 
         fun setSlot(slot: Int, mat: Material, name: String, actDesc: String, descLines: List<String>, reqLvl: Int, hasIt: Boolean, isHonor: Boolean) {
             val item = if (hasIt) ItemStack(mat) else ItemStack(Material.BLACK_STAINED_GLASS_PANE)
@@ -275,7 +276,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         setSlot(39, Material.BOOK, "Bleeding Edge", "Activation: Right-Click Diamond/Netherite Sword", listOf("Using any sword above Diamond Tier", "causes the affected player to take", "${blDmg/2} hearts of damage every SECOND", "lasting ${blTicks}s (goes through armor &", "gives nausea when ended for 4s).", "(${blCd}s CD)"), 18, rep >= 18, false)
         setSlot(40, Material.BOOK, "Constant Strength", "Activation: Passive", listOf("The Player Receives CONSTANT", "Strength 1 effect."), 20, rep >= 20, false)
         setSlot(41, Material.BOOK, "Mace Slam", "Activation: Right-Click Mace", listOf("Allows the user to dash directionally", "by right clicking. Landing creates a", "shockwave dealing damage & knockup", "(caps at ${mcMaxDmg/2} hearts damage).", "(${mcCd}s CD)"), 20, rep >= 20, false)
-        setSlot(42, Material.ENCHANTED_BOOK, "Hellcrush (Boss)", "Activation: Sneak + Right-Click (Empty Hand)", listOf("ONLY ONE PLAYER CAN RECEIVE", "Max team size: 2 Members.", "Constant Glowing.", "Activate Strength 3 for ${hcDur/60} Minutes,", "but lose ${(hcReduction * 100).toInt()}% of the effects of your Helmet", "as if it was broken. (${hcCd/60}m CD)"), 21, rep >= 21, false)
+        setSlot(42, Material.ENCHANTED_BOOK, "Hellcrush (Boss)", "Activation: Sneak + Right-Click (Empty Hand)", listOf("ONLY ONE PLAYER CAN RECEIVE", "Max team size: 2 Members.", "Constant Glowing.", "Activate Strength 3 for ${hcDur/60} Minutes,", "but lose ${(hcBaseReduction * 100).toInt()}% base & ${(hcEnchReduction * 100).toInt()}% enchant", "stats of your Helmet. (${hcCd/60}m CD)"), 21, rep >= 21, false)
 
         player.openInventory(inv)
     }

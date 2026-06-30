@@ -90,13 +90,12 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
                 val cdSecs = plugin.config.getLong("abilities-config.hellcrush.cooldown-seconds", 900)
                 val durSecs = plugin.config.getLong("abilities-config.hellcrush.duration-seconds", 300)
-                val hcReduction = plugin.config.getDouble("abilities-config.hellcrush.stat-reduction-percentage", 0.5)
 
                 if (now - lastUsed > cdSecs * 1000L) {
                     sacrificeCooldowns[player.uniqueId] = now
                     activeSacrifices.add(player.uniqueId)
 
-                    msg(player, "Hellcrush Activated! Helmet stats reduced by ${(hcReduction * 100).toInt()}% for ${durSecs/60} minutes of Strength III.", NamedTextColor.DARK_RED)
+                    msg(player, "Hellcrush activated, Helmet is now Defective", NamedTextColor.DARK_RED)
                     player.world.playSound(player.location, Sound.ENTITY_ITEM_BREAK, 1.2f, 0.7f)
 
                     plugin.server.scheduler.runTaskLater(plugin, Runnable {
@@ -104,7 +103,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                             activeSacrifices.remove(player.uniqueId)
                             if (player.isOnline) {
                                 restoreHelmet(player)
-                                msg(player, "Your Hellcrush fury has faded. Helmet stats restored.", NamedTextColor.GRAY)
+                                msg(player, "Your Hellcrush fury has faded. Helmet is no longer defective.", NamedTextColor.GRAY)
                             }
                         }
                     }, durSecs * 20L)
@@ -315,9 +314,8 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 if (helmet != null) {
                     val protLevel = helmet.getEnchantmentLevel(Enchantment.PROTECTION)
                     if (protLevel > 0) {
-                        val hcReduction = plugin.config.getDouble("abilities-config.hellcrush.stat-reduction-percentage", 0.5)
-                        // Reads the dynamic config. Base protection is 4% (0.04) per level.
-                        val reductionToRemove = (protLevel * 0.04 * hcReduction).coerceAtMost(0.80)
+                        val hcEnchantReduction = plugin.config.getDouble("abilities-config.hellcrush.enchant-reduction-percentage", 0.6)
+                        val reductionToRemove = (protLevel * 0.04 * hcEnchantReduction).coerceAtMost(0.80)
                         event.damage *= (1.0 / (1.0 - reductionToRemove))
                     }
                 }
