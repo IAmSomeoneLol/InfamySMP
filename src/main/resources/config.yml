@@ -42,6 +42,18 @@ custom-model-data: # Do not touch this, used for the Numbering of Textures on In
 # Ability Balancing Configuration
 # ==========================================
 abilities-config:
+  passives:
+    level-15:
+      effect: "WEAVING"
+      amplifier: 0 # 0 = Level I, 1 = Level II, 2 = Level III
+    level-20:
+      effect: "STRENGTH"
+      amplifier: 0 # 0 = Level I
+    level-21-boss:
+      effect: "GLOWING"
+      amplifier: 0 # 0 = Level I
+    hero-of-the-village:
+      effect: "HERO_OF_THE_VILLAGE"
   sword-block:
     cooldown-seconds: 60
     duration-seconds: 5
@@ -51,11 +63,16 @@ abilities-config:
     health-cost: 4.0 # 4.0 = 2 Hearts
   bleeding-edge:
     cooldown-seconds: 60 # 1 minute
+    prime-timeout-seconds: 4 # Timeout Timer
     duration-ticks: 5 # 5 seconds
     damage-per-tick: 1.0 # 1.0 = Half a Heart
     iframe-ticks: 10 # 10 ticks = 0.5
+    after-effect:
+      effect: "NAUSEA"
+      duration-ticks: 80 # 80 ticks = 4 seconds
+      amplifier: 1 # 1 = Level II
   mace-slam:
-    cooldown-seconds: 60 # 1 minutez
+    cooldown-seconds: 60 # 1 minute
     forward-velocity: 1.5 # forward velocity when aiming dead ground forward
     upward-velocity: 1.4 # 1.4 - 12 blocks high vertical
     max-splash-damage: 12.0 # 12.0 = 6 Hearts
@@ -65,6 +82,9 @@ abilities-config:
     duration-seconds: 300 # 5 minutes
     base-stat-reduction-percentage: 0.4 # 40%
     enchant-reduction-percentage: 0.6 # 60%
+    active-effect:
+      effect: "STRENGTH"
+      amplifier: 3 # 3 = Level IV
 
 # ==========================================
 # Infamy Mechanics (Positive Points)

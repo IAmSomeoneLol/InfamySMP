@@ -16,6 +16,7 @@ import org.bukkit.inventory.ShapedRecipe
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
+import org.bukkit.Registry
 
 class InfamySMP : JavaPlugin(), Listener {
     lateinit var infamyManager: InfamyManager
@@ -71,6 +72,26 @@ class InfamySMP : JavaPlugin(), Listener {
             val showParticles = config.getBoolean("settings.show-ability-particles", true)
             val hcBaseReduction = config.getDouble("abilities-config.hellcrush.base-stat-reduction-percentage", 0.4)
 
+            // DYNAMIC POTION REGISTRY FETCHERS
+            fun getEffect(path: String, default: String): PotionEffectType {
+                val str = config.getString(path, default)!!.lowercase()
+                return Registry.POTION_EFFECT_TYPE.get(NamespacedKey.minecraft(str)) ?: PotionEffectType.GLOWING
+            }
+
+            val l15Type = getEffect("abilities-config.passives.level-15.effect", "weaving")
+            val l15Amp = config.getInt("abilities-config.passives.level-15.amplifier", 0)
+
+            val l20Type = getEffect("abilities-config.passives.level-20.effect", "strength")
+            val l20Amp = config.getInt("abilities-config.passives.level-20.amplifier", 0)
+
+            val l21Type = getEffect("abilities-config.passives.level-21-boss.effect", "glowing")
+            val l21Amp = config.getInt("abilities-config.passives.level-21-boss.amplifier", 0)
+
+            val hotvType = getEffect("abilities-config.passives.hero-of-the-village.effect", "hero_of_the_village")
+
+            val hcActType = getEffect("abilities-config.hellcrush.active-effect.effect", "strength")
+            val hcActAmp = config.getInt("abilities-config.hellcrush.active-effect.amplifier", 2)
+
             for (player in server.onlinePlayers) {
                 if (!easyCoordEnabled && teamManager.coordsScoreboardToggled.contains(player.uniqueId)) {
                     teamManager.coordsScoreboardToggled.remove(player.uniqueId)
@@ -113,17 +134,17 @@ class InfamySMP : JavaPlugin(), Listener {
                 val rep = infamyManager.getRawReputation(player)
                 val honor = infamyManager.getHonor(player)
 
-                if (rep >= 15) player.addPotionEffect(PotionEffect(PotionEffectType.WEAVING, 60, 0, true, false, false))
-                if (rep >= 21) player.addPotionEffect(PotionEffect(PotionEffectType.GLOWING, 60, 0, true, false, false))
+                if (rep >= 15) player.addPotionEffect(PotionEffect(l15Type, 60, l15Amp, true, false, false))
+                if (rep >= 21) player.addPotionEffect(PotionEffect(l21Type, 60, l21Amp, true, false, false))
 
                 if (rep >= 20) {
                     if (combatListener.activeSacrifices.contains(player.uniqueId)) {
-                        player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 2, true, false, false))
+                        player.addPotionEffect(PotionEffect(hcActType, 60, hcActAmp, true, false, false))
                         if (showParticles) {
                             player.world.spawnParticle(org.bukkit.Particle.TRIAL_SPAWNER_DETECTION, player.location.add(0.0, 1.0, 0.0), 30, 0.6, 1.0, 0.6, 0.02)
                         }
                     } else {
-                        player.addPotionEffect(PotionEffect(PotionEffectType.STRENGTH, 60, 0, true, false, false))
+                        player.addPotionEffect(PotionEffect(l20Type, 60, l20Amp, true, false, false))
                     }
                 }
 
@@ -155,7 +176,7 @@ class InfamySMP : JavaPlugin(), Listener {
 
                 if (honor >= 6) {
                     val hotvLevel = when { honor >= 12 -> 2; honor >= 9 -> 1; honor >= 6 -> 0; else -> -1 }
-                    if (hotvLevel >= 0) player.addPotionEffect(PotionEffect(PotionEffectType.HERO_OF_THE_VILLAGE, 100, hotvLevel, true, false, false))
+                    if (hotvLevel >= 0) player.addPotionEffect(PotionEffect(hotvType, 100, hotvLevel, true, false, false))
                 }
 
                 val currentItem = player.inventory.itemInMainHand.type

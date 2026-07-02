@@ -220,6 +220,23 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         player.openInventory(inv)
     }
 
+    // HELPER: Formats ugly enum string "HERO_OF_THE_VILLAGE" into clean "Hero Of The Village"
+    private fun formatName(str: String): String {
+        return str.split("_").joinToString(" ") { it.lowercase().replaceFirstChar(Char::uppercase) }
+    }
+
+    // HELPER: Translates Int to standard Roman Numeral Potion format
+    private fun toRoman(amp: Int): String {
+        return when (amp) {
+            0 -> "I"
+            1 -> "II"
+            2 -> "III"
+            3 -> "IV"
+            4 -> "V"
+            else -> (amp + 1).toString()
+        }
+    }
+
     fun openAbilitiesGUI(player: Player) {
         val inv = Bukkit.createInventory(null, 54, Component.text("Unlocked Abilities", NamedTextColor.DARK_PURPLE))
         val rep = plugin.infamyManager.getRawReputation(player)
@@ -242,6 +259,15 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         val hcDur = plugin.config.getLong("abilities-config.hellcrush.duration-seconds", 300)
         val hcBaseReduction = plugin.config.getDouble("abilities-config.hellcrush.base-stat-reduction-percentage", 0.4)
         val hcEnchReduction = plugin.config.getDouble("abilities-config.hellcrush.enchant-reduction-percentage", 0.6)
+
+        // DYNAMIC EFFECT STRINGS
+        val l15EffName = formatName(plugin.config.getString("abilities-config.passives.level-15.effect", "Weaving")!!)
+        val l20EffName = formatName(plugin.config.getString("abilities-config.passives.level-20.effect", "Strength")!!)
+        val hcActEffName = formatName(plugin.config.getString("abilities-config.hellcrush.active-effect.effect", "Strength")!!)
+        val hcActAmp = toRoman(plugin.config.getInt("abilities-config.hellcrush.active-effect.amplifier", 2))
+
+        val bleedEffName = formatName(plugin.config.getString("abilities-config.bleeding-edge.after-effect.effect", "Nausea")!!)
+        val bleedEffDur = plugin.config.getInt("abilities-config.bleeding-edge.after-effect.duration-ticks", 80)
 
         fun setSlot(slot: Int, mat: Material, name: String, actDesc: String, descLines: List<String>, reqLvl: Int, hasIt: Boolean, isHonor: Boolean) {
             val item = if (hasIt) ItemStack(mat) else ItemStack(Material.BLACK_STAINED_GLASS_PANE)
@@ -271,12 +297,12 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         setSlot(30, Material.BOOK, "Axe Pierce", "Activation: Attack blocking enemy with Axe", listOf("The Player Receives the ability to", "do Damage through Shields with an", "AXE while breaking it", "(Dealing 2 hearts)."), 9, rep >= 9, false)
         setSlot(31, Material.BOOK, "Double Potions", "Activation: Passive (All Potions)", listOf("The Player Receives DOUBLE TIME", "for EVERY Potion używane."), 12, rep >= 12, false)
         setSlot(32, Material.BOOK, "Wary Villagers", "Activation: Passive (When trading)", listOf("HOWEVER Villagers now are wary of you,", "giving worse trades.", "", "Level 12: Wary trades", "Level 15: Even worse trades", "Level 20: Max price hikes"), 12, rep >= 12, false)
-        setSlot(33, Material.BOOK, "Passive Weaving", "Activation: Passive", listOf("The Player Receives a PASSIVE", "Weaving effect (Cobweb traps)."), 15, rep >= 15, false)
+        setSlot(33, Material.BOOK, "Passive Effect", "Activation: Passive", listOf("The Player Receives a PASSIVE", "$l15EffName effect."), 15, rep >= 15, false)
         setSlot(34, Material.BOOK, "Bad Fortune", "Activation: Passive (Overrides Fortune)", listOf("HOWEVER With all the sins you have", "committed you now have BAD FORTUNE.", "", "Level 15: Max Fortune 2", "Level 18: Max Fortune 1", "Level 20: No Fortune benefits AT ALL"), 15, rep >= 15, false)
-        setSlot(39, Material.BOOK, "Bleeding Edge", "Activation: Right-Click Diamond/Netherite Sword", listOf("Using any sword above Diamond Tier", "causes the affected player to take", "${blDmg/2} hearts of damage every SECOND", "lasting ${blTicks}s (goes through armor &", "gives nausea when ended for 4s).", "(${blCd}s CD)"), 18, rep >= 18, false)
-        setSlot(40, Material.BOOK, "Constant Strength", "Activation: Passive", listOf("The Player Receives CONSTANT", "Strength 1 effect."), 20, rep >= 20, false)
+        setSlot(39, Material.BOOK, "Bleeding Edge", "Activation: Right-Click Diamond/Netherite Sword", listOf("Using any sword above Diamond Tier", "causes the affected player to take", "${blDmg/2} hearts of damage every SECOND", "lasting ${blTicks}s (goes through armor &", "gives $bleedEffName when ended for ${bleedEffDur/20}s).", "(${blCd}s CD)"), 18, rep >= 18, false)
+        setSlot(40, Material.BOOK, "Constant Enhancement", "Activation: Passive", listOf("The Player Receives CONSTANT", "$l20EffName effect."), 20, rep >= 20, false)
         setSlot(41, Material.BOOK, "Mace Slam", "Activation: Right-Click Mace", listOf("Allows the user to dash directionally", "by right clicking. Landing creates a", "shockwave dealing damage & knockup", "(caps at ${mcMaxDmg/2} hearts damage).", "(${mcCd}s CD)"), 20, rep >= 20, false)
-        setSlot(42, Material.ENCHANTED_BOOK, "Hellcrush (Boss)", "Activation: Sneak + Right-Click (Empty Hand)", listOf("ONLY ONE PLAYER CAN RECEIVE", "Max team size: 2 Members.", "Constant Glowing.", "Activate Strength 3 for ${hcDur/60} Minutes,", "but lose ${(hcBaseReduction * 100).toInt()}% base & ${(hcEnchReduction * 100).toInt()}% enchant", "stats of your Helmet. (${hcCd/60}m CD)"), 21, rep >= 21, false)
+        setSlot(42, Material.ENCHANTED_BOOK, "Hellcrush (Boss)", "Activation: Sneak + Right-Click (Empty Hand)", listOf("ONLY ONE PLAYER CAN RECEIVE", "Max team size: 2 Members.", "Constant Glowing.", "Activate $hcActEffName $hcActAmp for ${hcDur/60} Minutes,", "but lose ${(hcBaseReduction * 100).toInt()}% base & ${(hcEnchReduction * 100).toInt()}% enchant", "stats of your Helmet. (${hcCd/60}m CD)"), 21, rep >= 21, false)
 
         player.openInventory(inv)
     }

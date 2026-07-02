@@ -6,7 +6,9 @@ import io.papermc.paper.event.player.PlayerShieldDisableEvent
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
 import org.bukkit.Particle
+import org.bukkit.Registry
 import org.bukkit.Sound
 import org.bukkit.enchantments.Enchantment
 import org.bukkit.entity.LivingEntity
@@ -167,6 +169,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             val now = System.currentTimeMillis()
             val lastUsed = bleedCooldowns[player.uniqueId] ?: 0
             val cdSecs = plugin.config.getLong("abilities-config.bleeding-edge.cooldown-seconds", 60)
+            val timeoutSecs = plugin.config.getLong("abilities-config.bleeding-edge.prime-timeout-seconds", 4)
 
             if (now - lastUsed > cdSecs * 1000L) {
                 bleedCooldowns[player.uniqueId] = now
@@ -178,7 +181,8 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                     var trailTicks = 0
                     object : BukkitRunnable() {
                         override fun run() {
-                            if (!activeBleedCharge.containsKey(player.uniqueId) || trailTicks >= 80 || !player.isOnline || player.isDead) {
+                            // DYNAMIC CONFIG: Will cancel particles when timeoutSecs is reached
+                            if (!activeBleedCharge.containsKey(player.uniqueId) || trailTicks >= (timeoutSecs * 20) || !player.isOnline || player.isDead) {
                                 cancel()
                                 return
                             }
@@ -189,12 +193,13 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                     }.runTaskTimer(plugin, 0L, 2L)
                 }
 
+                // DYNAMIC CONFIG: Dissipates charge according to the prime-timeout-seconds config
                 plugin.server.scheduler.runTaskLater(plugin, Runnable {
                     if (activeBleedCharge.containsKey(player.uniqueId)) {
                         activeBleedCharge.remove(player.uniqueId)
                         msg(player, "Bleeding Edge charge dissipated.", NamedTextColor.GRAY)
                     }
-                }, 80L)
+                }, timeoutSecs * 20L)
             } else {
                 msgCD(player, "Bleeding Edge on cooldown! (${((cdSecs * 1000L) - (now - lastUsed))/1000}s)", NamedTextColor.RED)
             }
@@ -343,6 +348,11 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             val dmgTick = plugin.config.getDouble("abilities-config.bleeding-edge.damage-per-tick", 1.0)
             val iframeTicks = plugin.config.getInt("abilities-config.bleeding-edge.iframe-ticks", 10)
 
+            val bleedStr = plugin.config.getString("abilities-config.bleeding-edge.after-effect.effect", "nausea")!!.lowercase()
+            val bleedEffectType = Registry.POTION_EFFECT_TYPE.get(NamespacedKey.minecraft(bleedStr)) ?: PotionEffectType.NAUSEA
+            val bleedEffTicks = plugin.config.getInt("abilities-config.bleeding-edge.after-effect.duration-ticks", 80)
+            val bleedEffAmp = plugin.config.getInt("abilities-config.bleeding-edge.after-effect.amplifier", 0)
+
             val bleedTask = object : BukkitRunnable() {
                 override fun run() {
                     if (victim.isDead || !victim.isValid) { cancel(); return }
@@ -366,7 +376,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
                         ticks++
                     } else {
-                        victim.addPotionEffect(PotionEffect(PotionEffectType.NAUSEA, 80, 0))
+                        victim.addPotionEffect(PotionEffect(bleedEffectType, bleedEffTicks, bleedEffAmp))
                         cancel()
                     }
                 }
