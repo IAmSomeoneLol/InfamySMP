@@ -88,7 +88,7 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
                         val teamName = plugin.teamManager.playerTeams[killer.uniqueId]
                         if (teamName != null) {
                             plugin.teamManager.removePlayerHandleLeader(killer.uniqueId)
-                            plugin.teamManager.banPlayerFromTeam(killer.uniqueId, teamName, 86400000L) // 24 Hour ban
+                            plugin.teamManager.banPlayerFromTeam(killer.uniqueId, teamName, 86400000L)
                             killer.sendMessage(Component.text("You have been kicked from the team and banned for 24 hours for betrayal!", NamedTextColor.DARK_RED))
                         }
                     }
@@ -96,7 +96,14 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
                     awardPoints = 0
                 }
             }
-            // Spam kill
+
+            // Double Infamy event
+            if (awardPoints == 1 && plugin.eventManager.isDoubleInfamyEnabled()) {
+                if (Math.random() <= plugin.eventManager.getDoubleInfamyChance()) {
+                    awardPoints += plugin.eventManager.getDoubleInfamyExtra()
+                    killer.sendMessage(Component.text("Event Bonus: Extra Infamy awarded! (+$awardPoints Total)", NamedTextColor.GOLD))
+                }
+            }
 
             if (logs.size >= 3 && awardPoints > 0) {
                 awardPoints = 0

@@ -30,7 +30,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         if (args.isEmpty()) {
             if (sender is Player) plugin.itemRestrictionsListener.openInfoGui(sender)
-            else sender.sendMessage(Component.text("Usage: /infamy <info|team|level|withdraw|bottle|history|cd|debugkill|add|top|settings|abilities> ...", NamedTextColor.RED))
+            else sender.sendMessage(Component.text("Usage: /infamy <info|team|level|withdraw|bottle|history|cd|debugkill|add|top|settings|abilities|eventhost> ...", NamedTextColor.RED))
             return true
         }
 
@@ -40,6 +40,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             "abilities" -> if (sender is Player) plugin.itemRestrictionsListener.openAbilitiesGUI(sender)
             "cd" -> if (sender is Player) handleCooldownsCommand(sender, args)
             "debugkill" -> handleDebugKillCommand(sender, args)
+            "eventhost" -> handleEventHostCommand(sender, args) // Event command
             "team" -> {
                 if (args.size == 1 && sender is Player) plugin.itemRestrictionsListener.openTeamsGui(sender)
                 else handleTeamCommand(sender, args)
@@ -66,7 +67,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         val completions = mutableListOf<String>()
         if (args.size == 1) {
             val subs = mutableListOf("team", "level", "withdraw", "history", "info", "cd", "settings", "abilities")
-            if (isAdmin(sender)) subs.addAll(listOf("add", "bottle", "debugkill", "top"))
+            if (isAdmin(sender)) subs.addAll(listOf("add", "bottle", "debugkill", "top", "eventhost")) // Event tab
             completions.addAll(subs.filter { it.startsWith(args[0].lowercase()) })
         } else if (args.size == 2) {
             when (args[0].lowercase()) {
@@ -76,12 +77,15 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 "top" -> if (isAdmin(sender)) completions.add("refresh")
                 "history" -> if (isAdmin(sender) && "admin".startsWith(args[1].lowercase())) completions.add("admin")
                 "cd" -> if (isAdmin(sender)) completions.add("refresh")
+                "eventhost" -> if (isAdmin(sender)) completions.addAll(listOf("true", "false", "configcalendar").filter { it.startsWith(args[1].lowercase()) }) // Event tab
             }
         } else if (args.size == 3) {
             if ((args[0].lowercase() == "add" || args[0].lowercase() == "bottle" || args[0].lowercase() == "top") && isAdmin(sender)) {
                 completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[2].lowercase()) })
             } else if (args[0].lowercase() == "debugkill" && isAdmin(sender)) {
                 completions.addAll(listOf("DROPPED", "PICKED_UP", "STASHED", "WITHDRAWN", "STOLEN", "LOST").filter { it.startsWith(args[2].uppercase()) })
+            } else if (args[0].lowercase() == "eventhost" && args[1].lowercase() == "configcalendar" && isAdmin(sender)) {
+                completions.addAll(listOf("true", "false").filter { it.startsWith(args[2].lowercase()) }) // Event tab
             } else if (args[0].lowercase() == "team") {
                 if (args[1].lowercase() == "icon") completions.addAll(listOf("reset").filter { it.startsWith(args[2].lowercase()) })
                 else if (args[1].lowercase() in listOf("leadership", "kick", "promote", "demote")) completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[2].lowercase()) })
@@ -94,6 +98,33 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             }
         }
         return completions
+    }
+
+    // Event command
+    private fun handleEventHostCommand(sender: CommandSender, args: Array<out String>) {
+        if (!isAdmin(sender)) return sender.sendMessage(Component.text("You don't have permission.", NamedTextColor.RED))
+        if (args.size < 2) return sender.sendMessage(Component.text("Usage: /infamy eventhost <true|false|configcalendar> [durationInSeconds]", NamedTextColor.RED))
+
+        when (args[1].lowercase()) {
+            "true" -> {
+                if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy eventhost true <durationInSeconds>", NamedTextColor.RED))
+                val duration = args[2].toLongOrNull() ?: return sender.sendMessage(Component.text("Duration must be a number in seconds.", NamedTextColor.RED))
+                if (duration <= 0) return sender.sendMessage(Component.text("Duration must be greater than 0.", NamedTextColor.RED))
+                plugin.eventManager.startEvent(duration)
+                sender.sendMessage(Component.text("Started Infamy Event for $duration seconds.", NamedTextColor.GREEN))
+            }
+            "false" -> {
+                plugin.eventManager.stopEvent()
+                sender.sendMessage(Component.text("Infamy Event stopped.", NamedTextColor.YELLOW))
+            }
+            "configcalendar" -> {
+                if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy eventhost configcalendar <true|false>", NamedTextColor.RED))
+                val enabled = args[2].toBooleanStrictOrNull() ?: return sender.sendMessage(Component.text("Specify true or false.", NamedTextColor.RED))
+                plugin.eventManager.setCalendarEnabled(enabled)
+                sender.sendMessage(Component.text("Calendar schedule set to: $enabled", NamedTextColor.GREEN))
+            }
+            else -> sender.sendMessage(Component.text("Unknown option. Use true, false, or configcalendar.", NamedTextColor.RED))
+        }
     }
 
     private fun handleTopRefreshCommand(sender: CommandSender, args: Array<out String>) {

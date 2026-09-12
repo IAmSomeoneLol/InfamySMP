@@ -25,6 +25,7 @@ class InfamySMP : JavaPlugin(), Listener {
     lateinit var infamyManager: InfamyManager
     lateinit var itemManager: ItemManager
     lateinit var teamManager: TeamManager
+    lateinit var eventManager: EventManager // Event Manager
     lateinit var combatListener: CombatListener
     lateinit var itemRestrictionsListener: ItemRestrictionsListener
 
@@ -37,9 +38,11 @@ class InfamySMP : JavaPlugin(), Listener {
         itemManager = ItemManager(this)
         infamyManager = InfamyManager(this)
         teamManager = TeamManager(this)
+        eventManager = EventManager(this) // Event Manager
 
         infamyManager.loadData()
         teamManager.loadData()
+        eventManager.loadConfig() // Event Manager
 
         combatListener = CombatListener(this)
         itemRestrictionsListener = ItemRestrictionsListener(this)
@@ -90,7 +93,6 @@ class InfamySMP : JavaPlugin(), Listener {
             val hcActAmp = config.getInt("abilities-config.hellcrush.active-effect.amplifier", 2)
 
             for (player in server.onlinePlayers) {
-                // Scoreboard
                 val settings = infamyManager.getSettings(player.uniqueId)
                 val mode = settings.scoreboardMode
                 val board = player.scoreboard
@@ -177,7 +179,6 @@ class InfamySMP : JavaPlugin(), Listener {
                         }
                     }
 
-                    // Scoreboard
                     val currentEntries = player.scoreboard.entries.filter { obj.getScore(it).isScoreSet }
                     currentEntries.forEach { if (!lines.contains(it)) player.scoreboard.resetScores(it) }
 
@@ -191,7 +192,6 @@ class InfamySMP : JavaPlugin(), Listener {
                     }
                 }
 
-                // Abilities
                 if (infamyManager.hasAbility(player, "passive_resistance", false)) {
                     player.addPotionEffect(PotionEffect(l15Type, 60, l15Amp, true, false, false))
                 }
@@ -215,7 +215,6 @@ class InfamySMP : JavaPlugin(), Listener {
                     }
                 }
 
-                // Attributes
                 val armorAttr = player.getAttribute(Attribute.ARMOR)
                 val toughAttr = player.getAttribute(Attribute.ARMOR_TOUGHNESS)
 
@@ -248,7 +247,6 @@ class InfamySMP : JavaPlugin(), Listener {
                     if (hotvLevel >= 0) player.addPotionEffect(PotionEffect(hotvType, 100, hotvLevel, true, false, false))
                 }
 
-                // Weapons
                 val currentItem = player.inventory.itemInMainHand.type
                 val uuid = player.uniqueId
                 val honor = infamyManager.getHonor(player)
@@ -272,7 +270,6 @@ class InfamySMP : JavaPlugin(), Listener {
                 }
             }
 
-            // Particles
             val pureEnabled = config.getBoolean("settings.bottle-particles.pure.enabled", true)
             val pureParticleStr = config.getString("settings.bottle-particles.pure.particle", "DUST")?.uppercase() ?: "DUST"
             val infamyEnabled = config.getBoolean("settings.bottle-particles.infamy.enabled", true)
@@ -303,6 +300,11 @@ class InfamySMP : JavaPlugin(), Listener {
                 }
             }
         }, 0L, 10L)
+
+        // Event scheduler
+        server.scheduler.runTaskTimer(this, Runnable {
+            eventManager.tickSecond()
+        }, 0L, 20L)
     }
 
     override fun onDisable() {

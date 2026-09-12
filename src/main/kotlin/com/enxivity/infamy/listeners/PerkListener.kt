@@ -65,16 +65,43 @@ class PerkListener(private val plugin: InfamySMP) : Listener {
 
     @EventHandler
     fun onPlayerExpChange(event: PlayerExpChangeEvent) {
+        var multiplier = 1.0
+
+        // Double Exp event
+        if (plugin.eventManager.isDoubleExpEnabled()) {
+            multiplier *= plugin.eventManager.getExpMultiplier()
+        }
+
+        // Honor stack
         if (plugin.infamyManager.hasAbility(event.player, "double_xp", true)) {
-            event.amount *= 2
+            if (!plugin.eventManager.isDoubleExpEnabled() || plugin.eventManager.doesHonorExpStack()) {
+                multiplier *= 2.0
+            }
+        }
+
+        if (multiplier > 1.0) {
+            event.amount = (event.amount * multiplier).toInt()
         }
     }
 
     @EventHandler
     fun onPlayerItemMend(event: PlayerItemMendEvent) {
-        if (plugin.infamyManager.hasAbility(event.player, "double_xp", true)) {
+        var multiplier = 1.0
 
-            event.repairAmount *= 2
+        // Mending boost event
+        if (plugin.eventManager.isDoubleExpEnabled() && plugin.eventManager.isMendingCheaper()) {
+            multiplier *= plugin.eventManager.getExpMultiplier()
+        }
+
+        // Honor stack
+        if (plugin.infamyManager.hasAbility(event.player, "double_xp", true)) {
+            if (!plugin.eventManager.isDoubleExpEnabled() || plugin.eventManager.doesHonorExpStack()) {
+                multiplier *= 2.0
+            }
+        }
+
+        if (multiplier > 1.0) {
+            event.repairAmount = (event.repairAmount * multiplier).toInt()
         }
     }
 
@@ -86,52 +113,68 @@ class PerkListener(private val plugin: InfamySMP) : Listener {
 
         var lootingBonus = 0
 
-        // Checks Honor config
         if (plugin.infamyManager.hasAbility(killer, "good_fortune", true)) {
             if (honor >= 12) lootingBonus = 3
             else if (honor >= 9) lootingBonus = 2
             else if (honor >= 3) lootingBonus = 1
         }
 
-        // Checks Infamy config (Overwrites if they are Infamous)
         if (plugin.infamyManager.hasAbility(killer, "bad_fortune", false)) {
-            if (rep >= 20) lootingBonus = -100 // Erases all looting entirely
+            if (rep >= 20) lootingBonus = -100
             else if (rep >= 18) lootingBonus = -1
             else if (rep >= 15) lootingBonus = -2
         }
 
-        if (lootingBonus == 0) return
+        if (lootingBonus != 0) {
+            val mob = event.entity as? org.bukkit.loot.Lootable
+            val lootTable = mob?.lootTable
 
-        val mob = event.entity as? org.bukkit.loot.Lootable ?: return
-        val lootTable = mob.lootTable ?: return
+            if (lootTable != null) {
+                val weapon = killer.inventory.itemInMainHand
+                val currentLooting = weapon.getEnchantmentLevel(Enchantment.LOOTING)
 
-        val weapon = killer.inventory.itemInMainHand
-        val currentLooting = weapon.getEnchantmentLevel(Enchantment.LOOTING)
+                var newLooting = currentLooting + lootingBonus
+                if (newLooting < 0) newLooting = 0
 
-        var newLooting = currentLooting + lootingBonus
-        if (newLooting < 0) newLooting = 0
+                if (newLooting != currentLooting) {
+                    val equipmentDrops = event.drops.filter { drop ->
+                        val eq = event.entity.equipment
+                        eq != null && (drop.isSimilar(eq.helmet) || drop.isSimilar(eq.chestplate) || drop.isSimilar(eq.leggings) || drop.isSimilar(eq.boots) || drop.isSimilar(eq.itemInMainHand) || drop.isSimilar(eq.itemInOffHand))
+                    }
 
-        if (newLooting != currentLooting) {
+                    val context = org.bukkit.loot.LootContext.Builder(event.entity.location)
+                        .lootedEntity(event.entity)
+                        .killer(killer)
+                        .lootingModifier(newLooting)
+                        .build()
 
-            val equipmentDrops = event.drops.filter { drop ->
-                val eq = event.entity.equipment
-                eq != null && (drop.isSimilar(eq.helmet) || drop.isSimilar(eq.chestplate) || drop.isSimilar(eq.leggings) || drop.isSimilar(eq.boots) || drop.isSimilar(eq.itemInMainHand) || drop.isSimilar(eq.itemInOffHand))
+                    val newLoot = lootTable.populateLoot(java.util.Random(), context)
+
+                    event.drops.clear()
+                    event.drops.addAll(equipmentDrops)
+                    event.drops.addAll(newLoot)
+                }
             }
+        }
 
-
-            val context = org.bukkit.loot.LootContext.Builder(event.entity.location)
-                .lootedEntity(event.entity)
-                .killer(killer)
-                .lootingModifier(newLooting)
-                .build()
-
-
-            val newLoot = lootTable.populateLoot(java.util.Random(), context)
-
-
-            event.drops.clear()
-            event.drops.addAll(equipmentDrops)
-            event.drops.addAll(newLoot)
+        // Double Mob drops
+        if (plugin.eventManager.isDoubleDropsEnabled() && plugin.eventManager.isDropsAffectMobs()) {
+            if (Math.random() <= plugin.eventManager.getDoubleDropsChance()) {
+                val mult = plugin.eventManager.getDoubleDropsMultiplier()
+                if (mult > 1) {
+                    val extraDrops = mutableListOf<ItemStack>()
+                    event.drops.forEach { drop ->
+                        val eq = event.entity.equipment
+                        val isEquipment = eq != null && (drop.isSimilar(eq.helmet) || drop.isSimilar(eq.chestplate) || drop.isSimilar(eq.leggings) || drop.isSimilar(eq.boots) || drop.isSimilar(eq.itemInMainHand) || drop.isSimilar(eq.itemInOffHand))
+                        if (!isEquipment) {
+                            val cloned = drop.clone()
+                            cloned.amount = drop.amount * (mult - 1)
+                            extraDrops.add(cloned)
+                        }
+                    }
+                    event.drops.addAll(extraDrops)
+                }
+            }
         }
     }
 }

@@ -1,0 +1,36 @@
+calendar:
+  enabled: true
+  timezone: "GMT+2"
+  recurring: true
+  start-hour: 18
+  duration-seconds: 7200
+  days:
+    MONDAY: false
+    TUESDAY: false
+    WEDNESDAY: false
+    THURSDAY: false
+    FRIDAY: true
+    SATURDAY: true
+    SUNDAY: true
+
+double-infamy:
+  enabled: true
+  chance: 0.5
+  extra-points: 1
+
+double-exp:
+  enabled: true
+  multiplier: 2.0
+  cheaper-mending: true
+  honor-stacks: true
+
+double-drops:
+  enabled: true
+  chance: 1.0
+  multiplier: 2
+  affects-ores: true
+  affects-mobs: true
+
+chest-refill:
+  enabled: false
+  restocks: 1

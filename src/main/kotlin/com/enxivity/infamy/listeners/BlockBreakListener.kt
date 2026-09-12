@@ -83,11 +83,8 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
 
         if (hasSilkTouch) {
             if (isOre && !isPlaced && plugin.infamyManager.hasAbility(player, "good_fortune", true)) {
-
                 if (Math.random() <= 0.5) {
-
                     val extra = if (Math.random() <= 0.15) 2 else 1
-
                     val centerLoc = event.block.location.clone().add(0.5, 0.2, 0.5)
                     event.block.world.dropItemNaturally(centerLoc, ItemStack(event.block.type, extra))
                 }
@@ -110,30 +107,36 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
             else if (rep >= 15) newFortune = newFortune.coerceAtMost(2)
         }
 
-        if (newFortune != currentFortune) {
-            val dummyTool = tool.clone()
-            if (newFortune <= 0) dummyTool.removeEnchantment(Enchantment.FORTUNE)
-            else dummyTool.addUnsafeEnchantment(Enchantment.FORTUNE, newFortune)
+        val dummyTool = tool.clone()
+        if (newFortune <= 0) dummyTool.removeEnchantment(Enchantment.FORTUNE)
+        else dummyTool.addUnsafeEnchantment(Enchantment.FORTUNE, newFortune)
 
-            val oldDrops = event.block.getDrops(tool, player).toList()
-            val newDrops = event.block.getDrops(dummyTool, player).toList()
+        val oldDrops = event.block.getDrops(tool, player).toList()
+        val calculatedDrops = if (newFortune != currentFortune) event.block.getDrops(dummyTool, player).toList() else oldDrops
 
-            var dropsChanged = oldDrops.size != newDrops.size
-            if (!dropsChanged) {
-                for (i in oldDrops.indices) {
-                    if (!oldDrops[i].isSimilar(newDrops[i]) || oldDrops[i].amount != newDrops[i].amount) {
-                        dropsChanged = true
-                        break
+        var dropsChanged = newFortune != currentFortune
+
+        // Double Ore event
+        var finalDrops = calculatedDrops
+        if (isOre && !isPlaced && plugin.eventManager.isDoubleDropsEnabled() && plugin.eventManager.isDropsAffectOres()) {
+            if (Math.random() <= plugin.eventManager.getDoubleDropsChance()) {
+                val mult = plugin.eventManager.getDoubleDropsMultiplier()
+                if (mult > 1) {
+                    dropsChanged = true
+                    finalDrops = calculatedDrops.map {
+                        val doubled = it.clone()
+                        doubled.amount = it.amount * mult
+                        doubled
                     }
                 }
             }
+        }
 
-            if (dropsChanged) {
-                event.isDropItems = false
-                val centerLoc = event.block.location.clone().add(0.5, 0.2, 0.5)
-                for (drop in newDrops) {
-                    event.block.world.dropItemNaturally(centerLoc, drop)
-                }
+        if (dropsChanged) {
+            event.isDropItems = false
+            val centerLoc = event.block.location.clone().add(0.5, 0.2, 0.5)
+            for (drop in finalDrops) {
+                event.block.world.dropItemNaturally(centerLoc, drop)
             }
         }
     }
