@@ -66,8 +66,8 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): MutableList<String> {
         val completions = mutableListOf<String>()
         if (args.size == 1) {
-            val subs = mutableListOf("team", "level", "withdraw", "history", "info", "cd", "settings", "abilities")
-            if (isAdmin(sender)) subs.addAll(listOf("add", "bottle", "debugkill", "top", "eventhost")) // Event tab
+            val subs = mutableListOf("team", "level", "withdraw", "history", "info", "cd", "settings", "abilities", "eventhost") // Event tab
+            if (isAdmin(sender)) subs.addAll(listOf("add", "bottle", "debugkill", "top"))
             completions.addAll(subs.filter { it.startsWith(args[0].lowercase()) })
         } else if (args.size == 2) {
             when (args[0].lowercase()) {
@@ -102,11 +102,33 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
 
     // Event command
     private fun handleEventHostCommand(sender: CommandSender, args: Array<out String>) {
+        if (args.size == 1) {
+            val em = plugin.eventManager
+            if (em.isEventActive) {
+                val timeStr = em.getFormattedRemainingTime()
+                val mods = em.getActiveModifiers().joinToString(", ").ifEmpty { "None" }
+                sender.sendMessage(Component.text("Event Active: $timeStr", NamedTextColor.GREEN))
+                sender.sendMessage(Component.text("Modifiers: $mods", NamedTextColor.YELLOW))
+            } else {
+                sender.sendMessage(Component.text("Event Active: No", NamedTextColor.RED))
+            }
+            return
+        }
+
         if (!isAdmin(sender)) return sender.sendMessage(Component.text("You don't have permission.", NamedTextColor.RED))
-        if (args.size < 2) return sender.sendMessage(Component.text("Usage: /infamy eventhost <true|false|configcalendar> [durationInSeconds]", NamedTextColor.RED))
 
         when (args[1].lowercase()) {
             "true" -> {
+                // Calendar active check
+                if (plugin.eventManager.isCalendarEvent || plugin.eventManager.calendarEnabled) {
+                    return sender.sendMessage(Component.text("Event is already started by calendar", NamedTextColor.RED))
+                }
+
+                // Event running check
+                if (plugin.eventManager.isEventActive) {
+                    return sender.sendMessage(Component.text("An event is already active. End it first using /infamy eventhost false.", NamedTextColor.RED))
+                }
+
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy eventhost true <durationInSeconds>", NamedTextColor.RED))
                 val duration = args[2].toLongOrNull() ?: return sender.sendMessage(Component.text("Duration must be a number in seconds.", NamedTextColor.RED))
                 if (duration <= 0) return sender.sendMessage(Component.text("Duration must be greater than 0.", NamedTextColor.RED))
@@ -120,6 +142,12 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             "configcalendar" -> {
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy eventhost configcalendar <true|false>", NamedTextColor.RED))
                 val enabled = args[2].toBooleanStrictOrNull() ?: return sender.sendMessage(Component.text("Specify true or false.", NamedTextColor.RED))
+
+                // Check current state
+                if (plugin.eventManager.calendarEnabled == enabled) {
+                    return sender.sendMessage(Component.text("Calendar Schelduer already set to $enabled.", NamedTextColor.YELLOW))
+                }
+
                 plugin.eventManager.setCalendarEnabled(enabled)
                 sender.sendMessage(Component.text("Calendar schedule set to: $enabled", NamedTextColor.GREEN))
             }

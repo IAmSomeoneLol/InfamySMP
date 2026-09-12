@@ -2,8 +2,6 @@ calendar:
   enabled: true
   timezone: "GMT+2"
   recurring: true
-  start-hour: 18
-  duration-seconds: 7200
   days:
     MONDAY: false
     TUESDAY: false
@@ -30,7 +28,3 @@ double-drops:
   multiplier: 2
   affects-ores: true
   affects-mobs: true
-
-chest-refill:
-  enabled: false
-  restocks: 1
