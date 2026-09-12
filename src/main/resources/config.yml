@@ -1,0 +1,232 @@
+# ==========================================
+# Infamy SMP - Main Configuration
+# ==========================================
+
+prefixes:
+  # These are the tags that show up in chat and above player heads based on their points.
+  # You can use standard Minecraft color codes (&a, &c, etc.)
+  infamy_21: "&4[Most Infamous]"
+  infamy_20: "&c[Extremely Dangerous]"
+  infamy_19: "&c[Extremely Dangerous]"
+  infamy_18: "&c[Extremely Dangerous]"
+  infamy_17: "&c[Extremely Dangerous]"
+  infamy_16: "&c[Extremely Dangerous]"
+  infamy_15: "&6[Dangerous]"
+  infamy_14: "&6[Dangerous]"
+  infamy_13: "&6[Dangerous]"
+  infamy_12: "&6[Dangerous]"
+  infamy_11: "&6[Dangerous]"
+  infamy_10: "&e[Risky]"
+  infamy_9: "&e[Risky]"
+  infamy_8: "&e[Risky]"
+  infamy_7: "&e[Risky]"
+  infamy_6: "&e[Risky]"
+  infamy_5: "&a[Normal]"
+  infamy_4: "&a[Normal]"
+  infamy_3: "&a[Normal]"
+  infamy_2: "&a[Normal]"
+  infamy_1: "&a[Normal]"
+  neutral: "&a[Normal]"
+  honor_1: "&b[Honorable]"
+  honor_2: "&b[Honorable]"
+  honor_3: "&b[Honorable]"
+  honor_4: "&b[Honorable]"
+  honor_5: "&b[Honorable]"
+  honor_6: "&b[Honorable]"
+  honor_7: "&b[Honorable]"
+  honor_8: "&b[Honorable]"
+  honor_9: "&b[Honorable]"
+  honor_10: "&b[Honorable]"
+  honor_11: "&b[Honorable]"
+  honor_12: "&b[Honorable]"
+  honor_13: "&b[Honorable]"
+  honor_14: "&b[Honorable]"
+  honor_15: "&b[Honorable]"
+  honor_16: "&b[Honorable]"
+  honor_17: "&b[Honorable]"
+  honor_18: "&b[Honorable]"
+  honor_19: "&b[Honorable]"
+  honor_20: "&b[Honorable]"
+  honor_21: "&3[Most Honorable]"
+
+# Global Toggle Settings
+settings:
+  fancy-chat: true # Enables the custom [TeamName] Player » Message format
+  instant-shield: true # Bypasses the vanilla 5-tick delay
+  betrayal:
+    enabled: true # If true, killing a teammate triggers betrayal logic
+    points: 5 # How many Infamy points are awarded to the betrayer
+    better-alternative: true # If true, kicks the betrayer from the team and bans them from rejoining it for 24h
+  drop-bottle-on-kill: true # Allow player kills to either instant consume or drop a bottle on the floor
+  allow-withdraw: true # Allow players to use the /infamy withdraw command
+  boss-bottle-announce: true # Sound effect announcements for the Pure Bottle dropping
+  boss-bottle-sound: true # Sound effect for the Pure Bottle interaction
+  show-ability-particles: true # Toggle VFX (visual effects) for abilities
+  team-easy-coord: true # Allows teammates to use /infamy team coords to see locations of their members
+  show-consumption-beacon: true # Toggle the Spiraling Beacon effect when consuming bottles
+  nametag-team-color: true # Shows team name and color above player heads
+  team-friendly-fire: true # Disabling this stops teammates from hurting each other
+  bottle-particles: # Change Particle effect type (also changes the Beacon spiral effect to match the corresponding bottle)
+    infamy:
+      enabled: true
+      particle: "END_ROD"
+    honor:
+      enabled: true
+      particle: "GLOW"
+    pure:
+      enabled: true
+      particle: "DUST"
+
+custom-model-data: # Do not touch this, used for the Numbering of Textures on Infamy/Honor/Pure bottles!
+  infamy_bottle: 10001
+  honor_bottle: 10002
+  boss_bottle: 10003
+
+# ==========================================
+# Ability Balancing Configuration
+# ==========================================
+# Note: In Minecraft, 20 Ticks = 1 Second.
+# For Health/Damage: 1.0 = Half a Heart, 2.0 = 1 Full Heart.
+abilities-config:
+  passives:
+    level-15:
+      effect: "WEAVING"
+      amplifier: 0 # 0 = Level I, 1 = Level II, 2 = Level III
+    level-20:
+      effect: "STRENGTH"
+      amplifier: 0 # 0 = Level I
+    level-21-boss:
+      effect: "GLOWING"
+      amplifier: 0 # 0 = Level I
+    hero-of-the-village:
+      effect: "HERO_OF_THE_VILLAGE"
+  sword-block:
+    cooldown-seconds: 60 # 60 seconds (1 minute CD)
+    duration-seconds: 5 # How long the guarding state lasts
+    damage-taken-multiplier: 0.5 # 0.5 = 50% damage taken (Meaning it blocks 50% of the hit)
+  shield-recovery:
+    cooldown-seconds: 25 # 25 seconds CD
+    health-cost: 4.0 # 4.0 = 2 Full Hearts taken away to use this
+  bleeding-edge:
+    cooldown-seconds: 60 # 1 minute CD
+    prime-timeout-seconds: 4 # How long the sword stays "charged" before the ability expires if you miss
+    duration-ticks: 5 # How many times the enemy bleeds
+    damage-per-tick: 1.0 # 1.0 = Half a Heart per bleed tick
+    iframe-ticks: 10 # 10 ticks = 0.5 seconds of invincibility between bleeds
+    after-effect:
+      effect: "NAUSEA"
+      duration-ticks: 80 # 80 ticks = 4 seconds of Nausea
+      amplifier: 1 # 1 = Level II
+  mace-slam:
+    cooldown-seconds: 60 # 1 minute CD
+    forward-velocity: 1.5 # How far forward it launches you
+    upward-velocity: 1.4 # 1.4 = roughly 12 blocks high vertically
+    max-splash-damage: 12.0 # 12.0 = 6 Full Hearts maximum splash damage
+    fall-damage-reduction: 0.25 # 0.25 = 25% less fall damage taken
+  hellcrush:
+    cooldown-seconds: 900 # 900 seconds = 15 minutes CD
+    duration-seconds: 300 # 300 seconds = 5 minutes active time
+    base-stat-reduction-percentage: 0.4 # 40% loss of basic helmet protection
+    enchant-reduction-percentage: 0.6 # 60% loss of helmet enchant protection
+    active-effect:
+      effect: "STRENGTH"
+      amplifier: 3 # 3 = Level IV Strength
+  hunger-absorption:
+    cooldown-seconds: 60 # 1 minute CD
+  true-invisibility:
+    cooldown-seconds: 300 # 5 minute CD
+    duration-seconds: 20 # Stays completely invisible for 20 seconds
+  karma-delay:
+    cooldown-seconds: 180 # 3 minute CD
+    delay-seconds: 6 # How long to trap/delay the damage before it all hits them at once
+    pool-nerf-percentage: 0.1 # 0.1 = 10% damage nerf on the final explosion
+  shield-sacrifice:
+    cooldown-seconds: 300 # 5 minute CD
+    duration-seconds: 120 # Disables the shield and gives Resistance for 2 minutes
+  axe-stagger:
+    cooldown-seconds: 45 # 45 seconds CD
+    stagger-ticks: 20 # 20 ticks = 1 second of freezing the enemy
+
+# ==========================================
+# Infamy Mechanics (Positive Points)
+# ==========================================
+# You can freely change the "level" required for any ability here.
+# If you don't want an ability in the game, change "enabled: true" to "false".
+infamy_abilities:
+  sword_block:
+    enabled: true
+    level: 3
+  shield_recovery:
+    enabled: false
+    level: 6
+  axe_pierce:
+    enabled: false
+    level: 9
+  shield_sacrifice:
+    enabled: true
+    level: 9
+  double_potions:
+    enabled: true
+    level: 12
+  villager_wary:
+    enabled: true
+    level: 12
+  passive_resistance:
+    enabled: true
+    level: 15
+  bad_fortune:
+    enabled: true
+    level: 15
+  axe_stagger:
+    enabled: true
+    level: 16
+  bleeding_edge:
+    enabled: true
+    level: 18
+  mace_slam:
+    enabled: true
+    level: 20
+  boss_sacrifice:
+    enabled: true
+    level: 21
+
+# ==========================================
+# Honor Mechanics (Negative Points)
+# ==========================================
+honor_abilities:
+  good_fortune:
+    enabled: true
+    level: 3
+  hero_of_the_village:
+    enabled: true
+    level: 6
+  halved_potions:
+    enabled: true
+    level: 9
+  weapon_cooldowns:
+    enabled: true
+    level: 12
+  hunger_absorption:
+    enabled: true
+    level: 15
+  double_xp:
+    enabled: true
+    level: 15
+  true_invisibility:
+    enabled: true
+    level: 18
+  karma_delay:
+    enabled: true
+    level: 21
+
+elytra-recipe:
+  enabled: true
+  shape:
+    - "PNP"
+    - "NSN"
+    - "F F"
+  ingredients:
+    P: "PHANTOM_MEMBRANE"
+    N: "NETHERITE_INGOT"
+    S: "NETHER_STAR"
+    F: "FEATHER"
