@@ -5,6 +5,7 @@ import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.block.Block
+import org.bukkit.block.Container
 import org.bukkit.enchantments.Enchantment
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -13,11 +14,13 @@ import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockPlaceEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
+import org.bukkit.util.Vector
 
 class BlockBreakListener(private val plugin: InfamySMP) : Listener {
 
     private val placedOresKey = NamespacedKey(plugin, "placed_ores")
 
+    // Packed coord calculation
     private fun getPacked(block: Block): Int {
         val lx = block.x and 15
         val lz = block.z and 15
@@ -25,6 +28,7 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
         return lx or (lz shl 4) or (ly shl 8)
     }
 
+    // Set placed ore
     private fun setPlacedOre(block: Block) {
         val chunk = block.chunk
         val pdc = chunk.persistentDataContainer
@@ -35,6 +39,7 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
         }
     }
 
+    // Check placed ore
     private fun isPlacedOre(block: Block): Boolean {
         val chunk = block.chunk
         val pdc = chunk.persistentDataContainer
@@ -42,6 +47,7 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
         return array.contains(getPacked(block))
     }
 
+    // Remove placed ore
     private fun removePlacedOre(block: Block) {
         val chunk = block.chunk
         val pdc = chunk.persistentDataContainer
@@ -57,6 +63,7 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
         }
     }
 
+    // Block place event
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onBlockPlace(event: BlockPlaceEvent) {
         val type = event.block.type
@@ -65,28 +72,40 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
         }
     }
 
+    // Block break event
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     fun onBlockBreak(event: BlockBreakEvent) {
         val player = event.player
         if (player.gameMode == GameMode.CREATIVE || !event.isDropItems) return
 
+        val block = event.block
+        val state = block.state
+
+        // Container safety check
+        if (state is Container) return
+
+        // Bed safety check
+        if (block.type.name.endsWith("_BED")) return
+
         val rep = plugin.infamyManager.getRawReputation(player)
         val honor = plugin.infamyManager.getHonor(player)
         val tool = player.inventory.itemInMainHand
 
-        val isOre = event.block.type.name.endsWith("_ORE") || event.block.type == Material.ANCIENT_DEBRIS
-        val isPlaced = if (isOre) isPlacedOre(event.block) else false
+        val isOre = block.type.name.endsWith("_ORE") || block.type == Material.ANCIENT_DEBRIS
+        val isPlaced = if (isOre) isPlacedOre(block) else false
 
-        if (isPlaced) removePlacedOre(event.block)
+        if (isPlaced) removePlacedOre(block)
 
         val hasSilkTouch = tool.containsEnchantment(Enchantment.SILK_TOUCH)
 
+        // Silk touch bonus
         if (hasSilkTouch) {
             if (isOre && !isPlaced && plugin.infamyManager.hasAbility(player, "good_fortune", true)) {
                 if (Math.random() <= 0.5) {
                     val extra = if (Math.random() <= 0.15) 2 else 1
-                    val centerLoc = event.block.location.clone().add(0.5, 0.2, 0.5)
-                    event.block.world.dropItemNaturally(centerLoc, ItemStack(event.block.type, extra))
+                    val centerLoc = block.location.add(0.5, 0.25, 0.5)
+                    val dropItem = block.world.dropItem(centerLoc, ItemStack(block.type, extra))
+                    dropItem.velocity = Vector(0.0, 0.1, 0.0)
                 }
             }
             return
@@ -95,6 +114,7 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
         val currentFortune = tool.getEnchantmentLevel(Enchantment.FORTUNE)
         var newFortune = currentFortune
 
+        // Fortune calculations
         if (plugin.infamyManager.hasAbility(player, "good_fortune", true)) {
             if (honor >= 12) newFortune += 3
             else if (honor >= 9) newFortune += 2
@@ -111,32 +131,46 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
         if (newFortune <= 0) dummyTool.removeEnchantment(Enchantment.FORTUNE)
         else dummyTool.addUnsafeEnchantment(Enchantment.FORTUNE, newFortune)
 
-        val oldDrops = event.block.getDrops(tool, player).toList()
-        val calculatedDrops = if (newFortune != currentFortune) event.block.getDrops(dummyTool, player).toList() else oldDrops
+        val oldDrops = block.getDrops(tool, player).toList()
+        val newDrops = if (newFortune != currentFortune) block.getDrops(dummyTool, player).toList() else oldDrops
 
-        var dropsChanged = newFortune != currentFortune
+        // Compare drop changes
+        var dropsChanged = false
+        if (oldDrops.size != newDrops.size) {
+            dropsChanged = true
+        } else {
+            for (i in oldDrops.indices) {
+                if (!oldDrops[i].isSimilar(newDrops[i]) || oldDrops[i].amount != newDrops[i].amount) {
+                    dropsChanged = true
+                    break
+                }
+            }
+        }
+
+        var finalDrops = if (dropsChanged) newDrops else oldDrops
 
         // Double Ore event
-        var finalDrops = calculatedDrops
         if (isOre && !isPlaced && plugin.eventManager.isDoubleDropsEnabled() && plugin.eventManager.isDropsAffectOres()) {
             if (Math.random() <= plugin.eventManager.getDoubleDropsChance()) {
                 val mult = plugin.eventManager.getDoubleDropsMultiplier()
                 if (mult > 1) {
                     dropsChanged = true
-                    finalDrops = calculatedDrops.map {
-                        val doubled = it.clone()
-                        doubled.amount = it.amount * mult
-                        doubled
+                    finalDrops = finalDrops.map {
+                        val cloned = it.clone()
+                        cloned.amount = it.amount * mult
+                        cloned
                     }
                 }
             }
         }
 
+        // Smooth drop spawn
         if (dropsChanged) {
             event.isDropItems = false
-            val centerLoc = event.block.location.clone().add(0.5, 0.2, 0.5)
+            val centerLoc = block.location.add(0.5, 0.25, 0.5)
             for (drop in finalDrops) {
-                event.block.world.dropItemNaturally(centerLoc, drop)
+                val itemEntity = block.world.dropItem(centerLoc, drop)
+                itemEntity.velocity = Vector(0.0, 0.1, 0.0)
             }
         }
     }
