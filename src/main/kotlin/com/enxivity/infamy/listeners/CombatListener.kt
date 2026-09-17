@@ -54,6 +54,23 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
     val shieldSacrificeCooldowns = mutableMapOf<UUID, Long>()
     val axeStaggerCooldowns = mutableMapOf<UUID, Long>()
 
+    // Clean expired cooldowns
+    fun cleanExpiredCooldowns() {
+        val now = System.currentTimeMillis()
+        swordBlockCooldowns.entries.removeIf { now - it.value > 120000L }
+        swordBlockActiveUntil.entries.removeIf { now >= it.value }
+        shieldAbilityCooldowns.entries.removeIf { now - it.value > 60000L }
+        bleedCooldowns.entries.removeIf { now - it.value > 120000L }
+        activeBleedCharge.entries.removeIf { now - it.value > 30000L }
+        maceCooldowns.entries.removeIf { now - it.value > 120000L }
+        sacrificeCooldowns.entries.removeIf { now - it.value > 1800000L }
+        honorAbsorbCooldowns.entries.removeIf { now - it.value > 120000L }
+        honorInvisCooldowns.entries.removeIf { now - it.value > 600000L }
+        karmaCooldowns.entries.removeIf { now - it.value > 3600000L }
+        shieldSacrificeCooldowns.entries.removeIf { now - it.value > 600000L }
+        axeStaggerCooldowns.entries.removeIf { now - it.value > 90000L }
+    }
+
     private fun msg(player: Player, text: String, color: NamedTextColor) {
         val settings = plugin.infamyManager.getSettings(player.uniqueId)
         if (settings.abilityMessages) {
@@ -113,9 +130,16 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         }
     }
 
+    // Player quit clean
     @EventHandler
     fun onQuit(event: org.bukkit.event.player.PlayerQuitEvent) {
-        activeTrueInvis.remove(event.player.uniqueId)
+        val uuid = event.player.uniqueId
+        activeTrueInvis.remove(uuid)
+        activeBrokenShields.remove(uuid)
+        maceActivePlayers.remove(uuid)
+        activeSacrifices.remove(uuid)
+        activeBleedCharge.remove(uuid)
+        activeKarma.remove(uuid)
     }
 
     @EventHandler

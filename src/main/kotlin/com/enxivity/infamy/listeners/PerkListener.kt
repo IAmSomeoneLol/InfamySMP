@@ -18,6 +18,7 @@ import org.bukkit.potion.PotionEffect
 
 class PerkListener(private val plugin: InfamySMP) : Listener {
 
+    // Potion apply event
     @EventHandler
     fun onPotionApply(event: EntityPotionEffectEvent) {
         val player = event.entity as? Player ?: return
@@ -33,7 +34,11 @@ class PerkListener(private val plugin: InfamySMP) : Listener {
             val newDuration = (effect.duration * modifier).toInt()
             val newEffect = PotionEffect(effect.type, newDuration, effect.amplifier, effect.isAmbient, effect.hasParticles(), effect.hasIcon())
             event.isCancelled = true
-            plugin.server.scheduler.runTask(plugin, Runnable { player.addPotionEffect(newEffect) })
+            plugin.server.scheduler.runTask(plugin, Runnable {
+                if (player.isOnline && !player.isDead) {
+                    player.addPotionEffect(newEffect)
+                }
+            })
         }
     }
 

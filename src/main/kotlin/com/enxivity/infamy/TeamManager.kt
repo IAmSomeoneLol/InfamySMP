@@ -2,6 +2,7 @@ package com.enxivity.infamy
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import org.bukkit.Bukkit
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
@@ -162,11 +163,29 @@ class TeamManager(private val plugin: InfamySMP) {
         return "${hours}h ${minutes}m"
     }
 
+    // Broadcast system messages
     fun broadcastToTeam(teamName: String, message: String, color: NamedTextColor) {
         val team = teams[teamName.lowercase()] ?: return
         team.members.forEach { memberId ->
             val p = Bukkit.getPlayer(memberId)
             if (p != null && plugin.infamyManager.getSettings(p.uniqueId).teamMessages) p.sendMessage(Component.text(message, color))
+        }
+    }
+
+    // Send team chat
+    fun sendTeamChat(team: TeamData, senderName: String, message: String) {
+        val colorCode = Regex("&([0-9a-fA-F])").find(team.colorFormat)?.value ?: "&b"
+        val teamColor = LegacyComponentSerializer.legacyAmpersand().deserialize(colorCode).color() ?: NamedTextColor.AQUA
+
+        val component = Component.text("[Team] $senderName", teamColor)
+            .append(Component.text(" » ", NamedTextColor.DARK_GRAY))
+            .append(Component.text(message, teamColor))
+
+        team.members.forEach { memberId ->
+            val p = Bukkit.getPlayer(memberId)
+            if (p != null && plugin.infamyManager.getSettings(p.uniqueId).teamMessages) {
+                p.sendMessage(component)
+            }
         }
     }
 
@@ -187,7 +206,7 @@ class TeamManager(private val plugin: InfamySMP) {
                 // Scoreboard
                 sbTeam.setCanSeeFriendlyInvisibles(true)
 
-                val formatComp = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize(team.colorFormat)
+                val formatComp = LegacyComponentSerializer.legacyAmpersand().deserialize(team.colorFormat)
                 sbTeam.prefix(formatComp)
 
                 team.members.forEach { memberId ->

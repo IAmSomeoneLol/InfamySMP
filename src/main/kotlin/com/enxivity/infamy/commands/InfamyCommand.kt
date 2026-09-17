@@ -11,6 +11,7 @@ import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
 import org.bukkit.command.TabCompleter
 import org.bukkit.entity.Player
+import org.bukkit.util.Vector
 import java.util.UUID
 
 class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabCompleter {
@@ -40,7 +41,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             "abilities" -> if (sender is Player) plugin.itemRestrictionsListener.openAbilitiesGUI(sender)
             "cd" -> if (sender is Player) handleCooldownsCommand(sender, args)
             "debugkill" -> handleDebugKillCommand(sender, args)
-            "eventhost" -> handleEventHostCommand(sender, args) // Event command
+            "eventhost" -> handleEventHostCommand(sender, args)
             "team" -> {
                 if (args.size == 1 && sender is Player) plugin.itemRestrictionsListener.openTeamsGui(sender)
                 else handleTeamCommand(sender, args)
@@ -66,7 +67,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): MutableList<String> {
         val completions = mutableListOf<String>()
         if (args.size == 1) {
-            val subs = mutableListOf("team", "level", "withdraw", "history", "info", "cd", "settings", "abilities", "eventhost") // Event tab
+            val subs = mutableListOf("team", "level", "withdraw", "history", "info", "cd", "settings", "abilities", "eventhost")
             if (isAdmin(sender)) subs.addAll(listOf("add", "bottle", "debugkill", "top"))
             completions.addAll(subs.filter { it.startsWith(args[0].lowercase()) })
         } else if (args.size == 2) {
@@ -77,7 +78,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 "top" -> if (isAdmin(sender)) completions.add("refresh")
                 "history" -> if (isAdmin(sender) && "admin".startsWith(args[1].lowercase())) completions.add("admin")
                 "cd" -> if (isAdmin(sender)) completions.add("refresh")
-                "eventhost" -> if (isAdmin(sender)) completions.addAll(listOf("true", "false", "configcalendar").filter { it.startsWith(args[1].lowercase()) }) // Event tab
+                "eventhost" -> if (isAdmin(sender)) completions.addAll(listOf("true", "false", "configcalendar").filter { it.startsWith(args[1].lowercase()) })
             }
         } else if (args.size == 3) {
             if ((args[0].lowercase() == "add" || args[0].lowercase() == "bottle" || args[0].lowercase() == "top") && isAdmin(sender)) {
@@ -85,7 +86,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             } else if (args[0].lowercase() == "debugkill" && isAdmin(sender)) {
                 completions.addAll(listOf("DROPPED", "PICKED_UP", "STASHED", "WITHDRAWN", "STOLEN", "LOST").filter { it.startsWith(args[2].uppercase()) })
             } else if (args[0].lowercase() == "eventhost" && args[1].lowercase() == "configcalendar" && isAdmin(sender)) {
-                completions.addAll(listOf("true", "false").filter { it.startsWith(args[2].lowercase()) }) // Event tab
+                completions.addAll(listOf("true", "false").filter { it.startsWith(args[2].lowercase()) })
             } else if (args[0].lowercase() == "team") {
                 if (args[1].lowercase() == "icon") completions.addAll(listOf("reset").filter { it.startsWith(args[2].lowercase()) })
                 else if (args[1].lowercase() in listOf("leadership", "kick", "promote", "demote")) completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[2].lowercase()) })
@@ -119,12 +120,10 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
 
         when (args[1].lowercase()) {
             "true" -> {
-                // Calendar active check
                 if (plugin.eventManager.isCalendarEvent || plugin.eventManager.calendarEnabled) {
                     return sender.sendMessage(Component.text("Event is already started by calendar", NamedTextColor.RED))
                 }
 
-                // Event running check
                 if (plugin.eventManager.isEventActive) {
                     return sender.sendMessage(Component.text("An event is already active. End it first using /infamy eventhost false.", NamedTextColor.RED))
                 }
@@ -143,7 +142,6 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy eventhost configcalendar <true|false>", NamedTextColor.RED))
                 val enabled = args[2].toBooleanStrictOrNull() ?: return sender.sendMessage(Component.text("Specify true or false.", NamedTextColor.RED))
 
-                // Check current state
                 if (plugin.eventManager.calendarEnabled == enabled) {
                     return sender.sendMessage(Component.text("Calendar Schelduer already set to $enabled.", NamedTextColor.YELLOW))
                 }
@@ -316,7 +314,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy team demote <player>", NamedTextColor.RED))
                 val target = Bukkit.getOfflinePlayer(args[2])
                 if (plugin.teamManager.demoteTeammate(sender, target.uniqueId)) {
-                    sender.sendMessage(Component.text("Successfully demoted ${target.name}.", NamedTextColor.GREEN))
+                    sender.sendMessage(Component.text("Successfully demoted ${target.name}.", NamedTextColor.YELLOW))
                 } else sender.sendMessage(Component.text("Cannot demote this player. (Only leader can demote)", NamedTextColor.RED))
             }
             "list" -> {
@@ -520,14 +518,26 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
 
             if (currentRep == 21) {
                 plugin.infamyManager.setReputation(sender, currentRep - amount)
-                sender.inventory.addItem(plugin.itemManager.createPureInfamyBottle(sender.name, "Withdrawn")).values.forEach { sender.world.dropItemNaturally(sender.location, it).isInvulnerable = true }
+                sender.inventory.addItem(plugin.itemManager.createPureInfamyBottle(sender.name, "Withdrawn")).values.forEach {
+                    val drop = sender.world.dropItem(sender.location, it)
+                    drop.isInvulnerable = true
+                    drop.velocity = Vector(0.0, 0.1, 0.0)
+                }
                 if (amount > 1) {
-                    sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount - 1, sender.name, sender.uniqueId.toString())).values.forEach { sender.world.dropItemNaturally(sender.location, it).isInvulnerable = true }
+                    sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount - 1, sender.name, sender.uniqueId.toString())).values.forEach {
+                        val drop = sender.world.dropItem(sender.location, it)
+                        drop.isInvulnerable = true
+                        drop.velocity = Vector(0.0, 0.1, 0.0)
+                    }
                 }
                 sender.sendMessage(Component.text("You withdrew points and extracted the Pure Infamy Bottle!", NamedTextColor.GREEN))
             } else {
                 plugin.infamyManager.setReputation(sender, currentRep - amount)
-                sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount, sender.name, sender.uniqueId.toString())).values.forEach { sender.world.dropItemNaturally(sender.location, it).isInvulnerable = true }
+                sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount, sender.name, sender.uniqueId.toString())).values.forEach {
+                    val drop = sender.world.dropItem(sender.location, it)
+                    drop.isInvulnerable = true
+                    drop.velocity = Vector(0.0, 0.1, 0.0)
+                }
                 sender.sendMessage(Component.text("Successfully withdrew $amount Infamy point(s)!", NamedTextColor.GREEN))
             }
         } else {
@@ -539,7 +549,10 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
 
             plugin.infamyManager.setReputation(sender, currentRep + amount)
             for(i in 1..amount) {
-                sender.inventory.addItem(plugin.itemManager.createHonorBottle()).values.forEach { sender.world.dropItemNaturally(sender.location, it) }
+                sender.inventory.addItem(plugin.itemManager.createHonorBottle()).values.forEach {
+                    val drop = sender.world.dropItem(sender.location, it)
+                    drop.velocity = Vector(0.0, 0.1, 0.0)
+                }
             }
             sender.sendMessage(Component.text("Successfully withdrew $amount Honor point(s)!", NamedTextColor.AQUA))
         }
@@ -565,7 +578,10 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 "honor" -> plugin.itemManager.createHonorBottle()
                 else -> plugin.itemManager.createInfamyBottle(level, "Admin Spawned", null)
             }
-            target.inventory.addItem(bottle).values.forEach { target.world.dropItemNaturally(target.location, it) }
+            target.inventory.addItem(bottle).values.forEach {
+                val drop = target.world.dropItem(target.location, it)
+                drop.velocity = Vector(0.0, 0.1, 0.0)
+            }
             given++
         }
         sender.sendMessage(Component.text("Given $given $type bottle(s) to ${target.name}.", NamedTextColor.GREEN))

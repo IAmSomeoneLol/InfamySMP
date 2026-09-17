@@ -25,7 +25,7 @@ class InfamySMP : JavaPlugin(), Listener {
     lateinit var infamyManager: InfamyManager
     lateinit var itemManager: ItemManager
     lateinit var teamManager: TeamManager
-    lateinit var eventManager: EventManager // Event Manager
+    lateinit var eventManager: EventManager
     lateinit var combatListener: CombatListener
     lateinit var itemRestrictionsListener: ItemRestrictionsListener
 
@@ -38,11 +38,11 @@ class InfamySMP : JavaPlugin(), Listener {
         itemManager = ItemManager(this)
         infamyManager = InfamyManager(this)
         teamManager = TeamManager(this)
-        eventManager = EventManager(this) // Event Manager
+        eventManager = EventManager(this)
 
         infamyManager.loadData()
         teamManager.loadData()
-        eventManager.loadConfig() // Event Manager
+        eventManager.loadConfig()
 
         combatListener = CombatListener(this)
         itemRestrictionsListener = ItemRestrictionsListener(this)
@@ -69,6 +69,7 @@ class InfamySMP : JavaPlugin(), Listener {
         val lastHeldItems = mutableMapOf<java.util.UUID, org.bukkit.Material>()
         val lastHonorLevels = mutableMapOf<java.util.UUID, Int>()
 
+        // Scoreboard passive loop
         server.scheduler.runTaskTimer(this, Runnable {
             val showParticles = config.getBoolean("settings.show-ability-particles", true)
             val hcBaseReduction = config.getDouble("abilities-config.hellcrush.base-stat-reduction-percentage", 0.4)
@@ -299,11 +300,16 @@ class InfamySMP : JavaPlugin(), Listener {
                     } catch (e: Exception) { }
                 }
             }
-        }, 0L, 10L)
+        }, 0L, 20L)
 
         // Event scheduler
+        var secondCounter = 0
         server.scheduler.runTaskTimer(this, Runnable {
             eventManager.tickSecond()
+            if (++secondCounter >= 60) {
+                secondCounter = 0
+                combatListener.cleanExpiredCooldowns()
+            }
         }, 0L, 20L)
     }
 
@@ -338,7 +344,7 @@ class InfamySMP : JavaPlugin(), Listener {
                 return
             }
             val msgText = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(event.message())
-            teamManager.broadcastToTeam(team.name, "[Team] (${player.name}) | $msgText", NamedTextColor.AQUA)
+            teamManager.sendTeamChat(team, player.name, msgText)
         } else if (config.getBoolean("settings.fancy-chat", true)) {
             val team = teamManager.getTeam(player.uniqueId)
             val teamPrefix = if (team != null) {

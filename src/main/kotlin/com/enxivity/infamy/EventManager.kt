@@ -25,7 +25,7 @@ class EventManager(private val plugin: InfamySMP) {
     var eventTotalDuration: Long = 0L
         private set
 
-    var calendarEnabled: Boolean = true // Calendar state
+    var calendarEnabled: Boolean = true
         private set
 
     private var timezone: ZoneId = ZoneId.of("GMT+2")
@@ -47,6 +47,7 @@ class EventManager(private val plugin: InfamySMP) {
         timezone = try {
             ZoneId.of(tzStr)
         } catch (e: Exception) {
+            plugin.logger.warning("Invalid timezone '$tzStr' in event.yml. Defaulting to GMT+2.")
             ZoneId.of("GMT+2")
         }
 
@@ -68,7 +69,7 @@ class EventManager(private val plugin: InfamySMP) {
     fun setCalendarEnabled(enabled: Boolean) {
         calendarEnabled = enabled
         if (enabled) {
-            cancelledDays.clear() // Calendar reset
+            cancelledDays.clear()
         }
         val file = File(plugin.dataFolder, "event.yml")
         val config = YamlConfiguration.loadConfiguration(file)
@@ -90,7 +91,7 @@ class EventManager(private val plugin: InfamySMP) {
         val msg = Component.text("Event Started.", NamedTextColor.GREEN)
         Bukkit.getOnlinePlayers().forEach { player ->
             player.sendMessage(msg)
-            player.playSound(player.location, Sound.BLOCK_BEACON_ACTIVATE, 1.0f, 1.0f) // Start sound
+            player.playSound(player.location, Sound.BLOCK_BEACON_ACTIVATE, 1.0f, 1.0f)
         }
     }
 
@@ -114,7 +115,7 @@ class EventManager(private val plugin: InfamySMP) {
 
         if (wasCalendar) {
             val currentDay = ZonedDateTime.now(timezone).dayOfWeek
-            cancelledDays.add(currentDay) // Mark cancelled
+            cancelledDays.add(currentDay)
         }
 
         val msg = Component.text("Event Ended.", NamedTextColor.RED)

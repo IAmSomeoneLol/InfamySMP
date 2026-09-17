@@ -1,6 +1,7 @@
 package com.enxivity.infamy.listeners
 
 import com.enxivity.infamy.InfamySMP
+import org.bukkit.Chunk
 import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
@@ -12,6 +13,7 @@ import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockPlaceEvent
+import org.bukkit.event.world.ChunkUnloadEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.util.Vector
@@ -19,6 +21,27 @@ import org.bukkit.util.Vector
 class BlockBreakListener(private val plugin: InfamySMP) : Listener {
 
     private val placedOresKey = NamespacedKey(plugin, "placed_ores")
+    private val chunkCache = mutableMapOf<Long, MutableSet<Int>>()
+
+    // Chunk key helper
+    private fun getChunkKey(chunk: Chunk): Long {
+        return (chunk.x.toLong() shl 32) or (chunk.z.toLong() and 0xFFFFFFFFL)
+    }
+
+    // Get cached ores
+    private fun getPlacedSet(chunk: Chunk): MutableSet<Int> {
+        val key = getChunkKey(chunk)
+        return chunkCache.getOrPut(key) {
+            val array = chunk.persistentDataContainer.get(placedOresKey, PersistentDataType.INTEGER_ARRAY) ?: IntArray(0)
+            array.toMutableSet()
+        }
+    }
+
+    // Chunk unload clean
+    @EventHandler
+    fun onChunkUnload(event: ChunkUnloadEvent) {
+        chunkCache.remove(getChunkKey(event.chunk))
+    }
 
     // Packed coord calculation
     private fun getPacked(block: Block): Int {
@@ -31,34 +54,30 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
     // Set placed ore
     private fun setPlacedOre(block: Block) {
         val chunk = block.chunk
-        val pdc = chunk.persistentDataContainer
+        val set = getPlacedSet(chunk)
         val packed = getPacked(block)
-        val array = pdc.get(placedOresKey, PersistentDataType.INTEGER_ARRAY) ?: IntArray(0)
-        if (!array.contains(packed)) {
-            pdc.set(placedOresKey, PersistentDataType.INTEGER_ARRAY, array.plus(packed))
+        if (set.add(packed)) {
+            chunk.persistentDataContainer.set(placedOresKey, PersistentDataType.INTEGER_ARRAY, set.toIntArray())
         }
     }
 
     // Check placed ore
     private fun isPlacedOre(block: Block): Boolean {
         val chunk = block.chunk
-        val pdc = chunk.persistentDataContainer
-        val array = pdc.get(placedOresKey, PersistentDataType.INTEGER_ARRAY) ?: return false
-        return array.contains(getPacked(block))
+        val set = getPlacedSet(chunk)
+        return set.contains(getPacked(block))
     }
 
     // Remove placed ore
     private fun removePlacedOre(block: Block) {
         val chunk = block.chunk
-        val pdc = chunk.persistentDataContainer
+        val set = getPlacedSet(chunk)
         val packed = getPacked(block)
-        val array = pdc.get(placedOresKey, PersistentDataType.INTEGER_ARRAY) ?: return
-        if (array.contains(packed)) {
-            val newArray = array.filter { it != packed }.toIntArray()
-            if (newArray.isEmpty()) {
-                pdc.remove(placedOresKey)
+        if (set.remove(packed)) {
+            if (set.isEmpty()) {
+                chunk.persistentDataContainer.remove(placedOresKey)
             } else {
-                pdc.set(placedOresKey, PersistentDataType.INTEGER_ARRAY, newArray)
+                chunk.persistentDataContainer.set(placedOresKey, PersistentDataType.INTEGER_ARRAY, set.toIntArray())
             }
         }
     }
