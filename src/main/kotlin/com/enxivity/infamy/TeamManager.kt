@@ -87,8 +87,9 @@ class TeamManager(private val plugin: InfamySMP) {
         }
     }
 
-    // Rename
+    // Rename (Disallows & and §)
     fun renameTeam(leader: Player, newName: String): Boolean {
+        if (newName.contains("&") || newName.contains("§")) return false
         val oldKey = playerTeams[leader.uniqueId] ?: return false
         val team = teams[oldKey] ?: return false
         if (team.leader != leader.uniqueId) return false
@@ -172,14 +173,26 @@ class TeamManager(private val plugin: InfamySMP) {
         }
     }
 
-    // Send team chat
-    fun sendTeamChat(team: TeamData, senderName: String, message: String) {
+    fun broadcastComponentToTeam(teamName: String, component: Component) {
+        val team = teams[teamName.lowercase()] ?: return
+        team.members.forEach { memberId ->
+            val p = Bukkit.getPlayer(memberId)
+            if (p != null && plugin.infamyManager.getSettings(p.uniqueId).teamMessages) {
+                p.sendMessage(component)
+            }
+        }
+    }
+
+    // Send team chat with interactive components & formatting
+    fun sendTeamChat(team: TeamData, sender: Player, rawMessage: String) {
         val colorCode = Regex("&([0-9a-fA-F])").find(team.colorFormat)?.value ?: "&b"
         val teamColor = LegacyComponentSerializer.legacyAmpersand().deserialize(colorCode).color() ?: NamedTextColor.AQUA
 
-        val component = Component.text("[Team] $senderName", teamColor)
+        val processedMessage = plugin.buildChatComponent(sender, rawMessage, teamColor)
+
+        val component = Component.text("[Team] ${sender.name}", teamColor)
             .append(Component.text(" » ", NamedTextColor.DARK_GRAY))
-            .append(Component.text(message, teamColor))
+            .append(processedMessage)
 
         team.members.forEach { memberId ->
             val p = Bukkit.getPlayer(memberId)
@@ -244,7 +257,9 @@ class TeamManager(private val plugin: InfamySMP) {
         syncAllScoreboards()
     }
 
+    // Disallows & and § in team name
     fun createTeam(leader: Player, teamName: String): Boolean {
+        if (teamName.contains("&") || teamName.contains("§")) return false
         if (playerTeams.containsKey(leader.uniqueId)) return false
         if (teams.containsKey(teamName.lowercase())) return false
         val newTeam = TeamData(teamName, leader.uniqueId)

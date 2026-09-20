@@ -90,8 +90,8 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
     fun restoreHelmet(player: Player) {
         val armorAttr = player.getAttribute(org.bukkit.attribute.Attribute.ARMOR)
         val toughAttr = player.getAttribute(org.bukkit.attribute.Attribute.ARMOR_TOUGHNESS)
-        val hellcrushArmorKey = org.bukkit.NamespacedKey(plugin, "hellcrush_armor_penalty")
-        val hellcrushToughKey = org.bukkit.NamespacedKey(plugin, "hellcrush_toughness_penalty")
+        val hellcrushArmorKey = NamespacedKey(plugin, "hellcrush_armor_penalty")
+        val hellcrushToughKey = NamespacedKey(plugin, "hellcrush_toughness_penalty")
 
         armorAttr?.modifiers?.find { it.key == hellcrushArmorKey }?.let { armorAttr.removeModifier(it) }
         toughAttr?.modifiers?.find { it.key == hellcrushToughKey }?.let { toughAttr.removeModifier(it) }
@@ -140,6 +140,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         activeSacrifices.remove(uuid)
         activeBleedCharge.remove(uuid)
         activeKarma.remove(uuid)
+        plugin.pvpDebuffActive.remove(uuid)
     }
 
     @EventHandler
@@ -584,6 +585,15 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         }
 
         val attacker = event.damager as? Player ?: return
+
+        // Dynamic Weapon Fatigue: Mob hit = default vanilla MC, Player hit = long cooldown debuff
+        if (plugin.infamyManager.hasAbility(attacker, "weapon_cooldowns", true)) {
+            val isVictimPlayer = victim is Player
+            if (plugin.pvpDebuffActive[attacker.uniqueId] != isVictimPlayer) {
+                plugin.pvpDebuffActive[attacker.uniqueId] = isVictimPlayer
+                plugin.updateWeaponCooldownPenalty(attacker)
+            }
+        }
 
         if (plugin.infamyManager.hasAbility(attacker, "axe_pierce", false) && victim is Player && victim.isBlocking && attacker.inventory.itemInMainHand.type.name.endsWith("_AXE")) {
             victim.health = (victim.health - 4.0).coerceAtLeast(0.0)

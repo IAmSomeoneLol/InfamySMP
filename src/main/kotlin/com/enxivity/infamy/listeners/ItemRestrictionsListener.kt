@@ -1,5 +1,7 @@
+@file:Suppress("DEPRECATION")
 package com.enxivity.infamy.listeners
 
+import com.enxivity.infamy.ECSnapshotHolder
 import com.enxivity.infamy.InfamySMP
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
@@ -22,6 +24,7 @@ import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.event.inventory.InventoryPickupItemEvent
 import org.bukkit.event.inventory.InventoryType
+import org.bukkit.event.inventory.PrepareAnvilEvent
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.SkullMeta
@@ -30,8 +33,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
-
-    //Ttracker bottle
 
     private fun updateBottleStatus(item: ItemStack?, status: String, holderInfo: String? = null) {
         if (item == null) return
@@ -46,9 +47,8 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         }
     }
 
-    // Intercepts the anvil preparing an item and forcefully renders `&` color codes into normal ChatColors
     @EventHandler
-    fun onPrepareAnvil(event: org.bukkit.event.inventory.PrepareAnvilEvent) {
+    fun onPrepareAnvil(event: PrepareAnvilEvent) {
         val result = event.result ?: return
         val text = event.inventory.renameText
         if (!text.isNullOrEmpty() && text.contains("&")) {
@@ -159,6 +159,12 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
 
     @EventHandler
     fun onInventoryClick(event: InventoryClickEvent) {
+        // ONLY cancels if top inventory is an ECSnapshotHolder. Vanilla Ender Chests are never affected!
+        if (event.view.topInventory.holder is ECSnapshotHolder) {
+            event.isCancelled = true
+            return
+        }
+
         val title = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(event.view.title())
         val player = event.whoClicked as Player
 
@@ -212,6 +218,8 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
             } else if (title == "Infamy Index") {
                 if (event.slot == 49) openInfoGui(player)
             } else if (title == "Unlocked Abilities") {
+                if (event.slot == 49) openInfoGui(player)
+            } else if (title in listOf("Registered Teams", "Your Kill History", "Server Kill History")) {
                 if (event.slot == 49) openInfoGui(player)
             }
 
@@ -267,6 +275,11 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
 
     @EventHandler
     fun onInventoryDrag(event: InventoryDragEvent) {
+        if (event.view.topInventory.holder is ECSnapshotHolder) {
+            event.isCancelled = true
+            return
+        }
+
         if (event.view.topInventory.type != InventoryType.PLAYER && event.view.topInventory.type != InventoryType.CRAFTING) {
             if (isBossBottle(event.oldCursor) && event.rawSlots.any { it < event.view.topInventory.size }) {
                 event.isCancelled = true
@@ -373,7 +386,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
                     Component.text("Drops when you die if you have > 0 points.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)))
             }
         }
-        val hon = plugin.itemManager.createHonorBottle().apply {
+        val hon = plugin.itemManager.createHonorBottle(1).apply {
             itemMeta = itemMeta.apply {
                 lore(listOf(Component.text("How to get: Buy from Wandering Trader,", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                     Component.text("Kill a Warden, or Win a Village Raid.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)))
@@ -501,7 +514,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
             AbilityDef("good_fortune", "Good Fortune", "Activation: Passive (Mine with Fortune)", listOf("Raises your fortune effects based on level.")),
             AbilityDef("hero_of_the_village", "Hero of the Village", "Activation: Passive", listOf("Villagers appreciate you, giving better trades.")),
             AbilityDef("halved_potions", "Halved Potions", "Activation: Passive (All Potions)", listOf("Your potion durations are halved.")),
-            AbilityDef("weapon_cooldowns", "Weapon Fatigue", "Activation: Passive (On hit)", listOf("Causes weapon cooldowns to be higher (Sword -> Axe).")),
+            AbilityDef("weapon_cooldowns", "Weapon Fatigue", "Activation: Passive (PvP Hit)", listOf("Attacking a player triggers a weapon cooldown penalty.", "Attacking mobs restores default vanilla attack speed.")),
             AbilityDef("double_xp", "Double XP", "Activation: Passive", listOf("You gain 2x Passive XP!")),
             AbilityDef("hunger_absorption", "Saturating Shield", "Activation: Sneak + Left-Click or Swap Hand (F)", listOf("Consume all active Hunger to convert it", "into temporary Absorption hearts. (${if (haCd >= 60) "${haCd / 60}m" else "${haCd}s"} CD)")),
             AbilityDef("true_invisibility", "True Invisibility", "Activation: Sneak + Right-Click (Empty Hand)", listOf("Safely hides your Armor, applying", "total Invisibility and Regeneration", "for $tiDur seconds. (${if (tiCd >= 60) "${tiCd / 60}m" else "${tiCd}s"} CD)")),

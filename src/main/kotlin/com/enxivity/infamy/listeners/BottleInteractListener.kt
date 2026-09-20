@@ -128,11 +128,13 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
 
             if (currentRep < 0 && targetRep > currentRep) {
                 val refundAmount = Math.min(points, -currentRep)
-                for (i in 1..refundAmount) {
-                    val refundBottle = plugin.itemManager.createHonorBottle()
-                    player.inventory.addItem(refundBottle).values.forEach { player.world.dropItemNaturally(player.location, it) }
+                val refundBottle = plugin.itemManager.createHonorBottle(refundAmount)
+                val leftovers = player.inventory.addItem(refundBottle)
+                if (leftovers.isNotEmpty()) {
+                    leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
+                    player.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
                 }
-                player.sendMessage(Component.text("Infamy neutralized your Honor! $refundAmount Honor Bottle(s) refunded to prevent item destruction.", NamedTextColor.YELLOW))
+                player.sendMessage(Component.text("Infamy neutralized your Honor! $refundAmount Honor point(s) refunded to prevent item destruction.", NamedTextColor.YELLOW))
             }
 
             if (targetRep > maxAllowed) {
@@ -145,7 +147,11 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                 val origKillId = pdc.get(plugin.itemManager.killIdKey, PersistentDataType.STRING)
 
                 val refundBottle = plugin.itemManager.createInfamyBottle(refundAmount, origName, origUUID, origKillId)
-                player.inventory.addItem(refundBottle).values.forEach { player.world.dropItemNaturally(player.location, it) }
+                val leftovers = player.inventory.addItem(refundBottle)
+                if (leftovers.isNotEmpty()) {
+                    leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
+                    player.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
+                }
             } else {
                 plugin.infamyManager.setReputation(player, targetRep)
                 player.sendMessage(Component.text("You consumed an Infamy Bottle!", NamedTextColor.GREEN))
@@ -168,17 +174,43 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                 return
             }
 
-            val targetRep = currentRep - 1
+            val points = pdc.get(plugin.itemManager.honorKey, PersistentDataType.INTEGER) ?: 1
 
-
-            if (currentRep > 0 && targetRep < currentRep) {
-                val refundBottle = plugin.itemManager.createInfamyBottle(1, "Neutralized", player.uniqueId.toString())
-                player.inventory.addItem(refundBottle).values.forEach { player.world.dropItemNaturally(player.location, it) }
-                player.sendMessage(Component.text("Honor neutralized your Infamy! 1 Infamy Bottle refunded to prevent item destruction.", NamedTextColor.YELLOW))
+            if (currentRep <= -21) {
+                player.sendMessage(Component.text("You have reached the maximum allowed level!", NamedTextColor.RED))
+                return
             }
 
-            plugin.infamyManager.setReputation(player, targetRep)
-            player.sendMessage(Component.text("You consumed an Honor Bottle!", NamedTextColor.AQUA))
+            // Honor neutralizes active Infamy points
+            if (currentRep > 0) {
+                val neutralized = Math.min(points, currentRep)
+                val refundBottle = plugin.itemManager.createInfamyBottle(neutralized, "Neutralized", player.uniqueId.toString())
+                val leftovers = player.inventory.addItem(refundBottle)
+                if (leftovers.isNotEmpty()) {
+                    leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
+                    player.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
+                }
+                player.sendMessage(Component.text("Honor neutralized your Infamy! $neutralized Infamy Bottle(s) refunded to prevent item destruction.", NamedTextColor.YELLOW))
+            }
+
+            val targetRep = currentRep - points
+            if (targetRep < -21) {
+                val applied = (-21 - currentRep).let { if (it < 0) -it else 0 }
+                val refundAmount = points - applied
+                plugin.infamyManager.setReputation(player, -21)
+                player.sendMessage(Component.text("You hit the level cap! Refunded $refundAmount point(s).", NamedTextColor.YELLOW))
+
+                val refundBottle = plugin.itemManager.createHonorBottle(refundAmount)
+                val leftovers = player.inventory.addItem(refundBottle)
+                if (leftovers.isNotEmpty()) {
+                    leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
+                    player.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
+                }
+            } else {
+                plugin.infamyManager.setReputation(player, targetRep)
+                player.sendMessage(Component.text("You consumed an Honor Bottle!", NamedTextColor.AQUA))
+            }
+
             plugin.server.scheduler.runTask(plugin, Runnable { player.inventory.getItem(event.hand)?.subtract(1) })
             spawnConsumptionBeacon(player.location, "honor")
             return

@@ -88,6 +88,9 @@ custom-model-data: # Do not touch this, used for the Numbering of Textures on In
 # Note: In Minecraft, 20 Ticks = 1 Second.
 # For Health/Damage: 1.0 = Half a Heart, 2.0 = 1 Full Heart.
 abilities-config:
+  weapon-fatigue:
+    sword-penalty: -0.3 # 50% reduced penalty (was -0.6)
+    axe-penalty: -0.2   # 50% reduced penalty (was -0.4)
   passives:
     level-15:
       effect: "WEAVING"
@@ -230,3 +233,14 @@ elytra-recipe:
     N: "NETHERITE_INGOT"
     S: "NETHER_STAR"
     F: "FEATHER"
+
+shulker-box-recipe:
+  enabled: true
+  shape:
+    - "NDN"
+    - "DCD"
+    - "NDN"
+  ingredients:
+    N: "NETHERITE_INGOT"
+    D: "DIAMOND_BLOCK"
+    C: "CHEST"

@@ -18,7 +18,6 @@ import org.bukkit.potion.PotionEffect
 
 class PerkListener(private val plugin: InfamySMP) : Listener {
 
-    // Potion apply event
     @EventHandler
     fun onPotionApply(event: EntityPotionEffectEvent) {
         val player = event.entity as? Player ?: return
@@ -72,12 +71,10 @@ class PerkListener(private val plugin: InfamySMP) : Listener {
     fun onPlayerExpChange(event: PlayerExpChangeEvent) {
         var multiplier = 1.0
 
-        // Double Exp event
         if (plugin.eventManager.isDoubleExpEnabled()) {
             multiplier *= plugin.eventManager.getExpMultiplier()
         }
 
-        // Honor stack
         if (plugin.infamyManager.hasAbility(event.player, "double_xp", true)) {
             if (!plugin.eventManager.isDoubleExpEnabled() || plugin.eventManager.doesHonorExpStack()) {
                 multiplier *= 2.0
@@ -93,12 +90,10 @@ class PerkListener(private val plugin: InfamySMP) : Listener {
     fun onPlayerItemMend(event: PlayerItemMendEvent) {
         var multiplier = 1.0
 
-        // Mending boost event
         if (plugin.eventManager.isDoubleExpEnabled() && plugin.eventManager.isMendingCheaper()) {
             multiplier *= plugin.eventManager.getExpMultiplier()
         }
 
-        // Honor stack
         if (plugin.infamyManager.hasAbility(event.player, "double_xp", true)) {
             if (!plugin.eventManager.isDoubleExpEnabled() || plugin.eventManager.doesHonorExpStack()) {
                 multiplier *= 2.0
@@ -112,6 +107,9 @@ class PerkListener(private val plugin: InfamySMP) : Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     fun onEntityDeath(event: EntityDeathEvent) {
+        // FIXED: Exclude players completely so player drops / gear are never duplicated
+        if (event.entity is Player) return
+
         val killer = event.entity.killer ?: return
         val rep = plugin.infamyManager.getRawReputation(killer)
         val honor = plugin.infamyManager.getHonor(killer)
@@ -162,7 +160,7 @@ class PerkListener(private val plugin: InfamySMP) : Listener {
             }
         }
 
-        // Double Mob drops
+        // Double Mob drops (only runs on mobs now)
         if (plugin.eventManager.isDoubleDropsEnabled() && plugin.eventManager.isDropsAffectMobs()) {
             if (Math.random() <= plugin.eventManager.getDoubleDropsChance()) {
                 val mult = plugin.eventManager.getDoubleDropsMultiplier()

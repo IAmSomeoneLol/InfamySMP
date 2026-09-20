@@ -51,6 +51,11 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             "withdraw" -> handleWithdrawCommand(sender, args)
             "bottle" -> handleBottleCommand(sender, args)
             "top" -> handleTopRefreshCommand(sender, args)
+            "viewec" -> {
+                if (sender is Player && args.size >= 2) {
+                    plugin.openEnderChestSnapshot(sender, args[1])
+                }
+            }
             "history" -> {
                 if (sender is Player) {
                     if (args.size > 1 && args[1].lowercase() == "admin") plugin.itemRestrictionsListener.openHistoryGui(sender, true)
@@ -101,7 +106,6 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         return completions
     }
 
-    // Event command
     private fun handleEventHostCommand(sender: CommandSender, args: Array<out String>) {
         if (args.size == 1) {
             val em = plugin.eventManager
@@ -247,11 +251,19 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         when (args[1].lowercase()) {
             "create" -> {
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy team create <name>", NamedTextColor.RED))
-                if (plugin.teamManager.createTeam(sender, args[2])) sender.sendMessage(Component.text("Team '${args[2]}' created!", NamedTextColor.GREEN)) else sender.sendMessage(Component.text("You are already in a team, or that name is taken.", NamedTextColor.RED))
+                val teamName = args[2]
+                if (teamName.contains("&") || teamName.contains("§")) {
+                    return sender.sendMessage(Component.text("Team name cannot contain formatting or color codes (& or §).", NamedTextColor.RED))
+                }
+                if (plugin.teamManager.createTeam(sender, teamName)) sender.sendMessage(Component.text("Team '$teamName' created!", NamedTextColor.GREEN)) else sender.sendMessage(Component.text("You are already in a team, or that name is taken.", NamedTextColor.RED))
             }
             "rename" -> {
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy team rename <new_name>", NamedTextColor.RED))
-                if (!plugin.teamManager.renameTeam(sender, args[2])) sender.sendMessage(Component.text("Cannot rename team! (Are you the leader? Is the name taken?)", NamedTextColor.RED))
+                val newName = args[2]
+                if (newName.contains("&") || newName.contains("§")) {
+                    return sender.sendMessage(Component.text("Team name cannot contain formatting or color codes (& or §).", NamedTextColor.RED))
+                }
+                if (!plugin.teamManager.renameTeam(sender, newName)) sender.sendMessage(Component.text("Cannot rename team! (Are you the leader? Is the name taken?)", NamedTextColor.RED))
             }
             "disband" -> if (plugin.teamManager.disbandTeam(sender)) sender.sendMessage(Component.text("Team disbanded successfully.", NamedTextColor.GREEN)) else sender.sendMessage(Component.text("Only the team leader can disband the team.", NamedTextColor.RED))
             "invite" -> {
@@ -337,7 +349,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                     }
                 } else {
                     val msgText = args.drop(2).joinToString(" ")
-                    plugin.teamManager.broadcastToTeam(team.name, "[Team] (${sender.name}) | $msgText", NamedTextColor.AQUA)
+                    plugin.teamManager.sendTeamChat(team, sender, msgText)
                 }
             }
             "color" -> {
@@ -518,25 +530,38 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
 
             if (currentRep == 21) {
                 plugin.infamyManager.setReputation(sender, currentRep - amount)
-                sender.inventory.addItem(plugin.itemManager.createPureInfamyBottle(sender.name, "Withdrawn")).values.forEach {
-                    val drop = sender.world.dropItem(sender.location, it)
-                    drop.isInvulnerable = true
-                    drop.velocity = Vector(0.0, 0.1, 0.0)
-                }
-                if (amount > 1) {
-                    sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount - 1, sender.name, sender.uniqueId.toString())).values.forEach {
+                val leftovers1 = sender.inventory.addItem(plugin.itemManager.createPureInfamyBottle(sender.name, "Withdrawn"))
+                if (leftovers1.isNotEmpty()) {
+                    leftovers1.values.forEach {
                         val drop = sender.world.dropItem(sender.location, it)
                         drop.isInvulnerable = true
                         drop.velocity = Vector(0.0, 0.1, 0.0)
+                    }
+                    sender.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
+                }
+
+                if (amount > 1) {
+                    val leftovers2 = sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount - 1, sender.name, sender.uniqueId.toString()))
+                    if (leftovers2.isNotEmpty()) {
+                        leftovers2.values.forEach {
+                            val drop = sender.world.dropItem(sender.location, it)
+                            drop.isInvulnerable = true
+                            drop.velocity = Vector(0.0, 0.1, 0.0)
+                        }
+                        sender.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
                     }
                 }
                 sender.sendMessage(Component.text("You withdrew points and extracted the Pure Infamy Bottle!", NamedTextColor.GREEN))
             } else {
                 plugin.infamyManager.setReputation(sender, currentRep - amount)
-                sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount, sender.name, sender.uniqueId.toString())).values.forEach {
-                    val drop = sender.world.dropItem(sender.location, it)
-                    drop.isInvulnerable = true
-                    drop.velocity = Vector(0.0, 0.1, 0.0)
+                val leftovers = sender.inventory.addItem(plugin.itemManager.createInfamyBottle(amount, sender.name, sender.uniqueId.toString()))
+                if (leftovers.isNotEmpty()) {
+                    leftovers.values.forEach {
+                        val drop = sender.world.dropItem(sender.location, it)
+                        drop.isInvulnerable = true
+                        drop.velocity = Vector(0.0, 0.1, 0.0)
+                    }
+                    sender.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
                 }
                 sender.sendMessage(Component.text("Successfully withdrew $amount Infamy point(s)!", NamedTextColor.GREEN))
             }
@@ -548,11 +573,16 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             if (amount > absoluteHonor) return sender.sendMessage(Component.text("You don't have enough Honor points!", NamedTextColor.RED))
 
             plugin.infamyManager.setReputation(sender, currentRep + amount)
-            for(i in 1..amount) {
-                sender.inventory.addItem(plugin.itemManager.createHonorBottle()).values.forEach {
+
+            // Withdraws as a SINGLE bulk bottle instead of filling inventory with +1s
+            val bottle = plugin.itemManager.createHonorBottle(amount)
+            val leftovers = sender.inventory.addItem(bottle)
+            if (leftovers.isNotEmpty()) {
+                leftovers.values.forEach {
                     val drop = sender.world.dropItem(sender.location, it)
                     drop.velocity = Vector(0.0, 0.1, 0.0)
                 }
+                sender.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
             }
             sender.sendMessage(Component.text("Successfully withdrew $amount Honor point(s)!", NamedTextColor.AQUA))
         }
@@ -575,7 +605,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         for (i in 1..count) {
             val bottle = when (type) {
                 "pure" -> plugin.itemManager.createPureInfamyBottle("Admin Spawned", sender.name)
-                "honor" -> plugin.itemManager.createHonorBottle()
+                "honor" -> plugin.itemManager.createHonorBottle(level)
                 else -> plugin.itemManager.createInfamyBottle(level, "Admin Spawned", null)
             }
             target.inventory.addItem(bottle).values.forEach {

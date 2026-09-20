@@ -47,16 +47,16 @@ class ItemManager(private val plugin: InfamySMP) {
         return item
     }
 
-    fun createHonorBottle(): ItemStack {
+    fun createHonorBottle(points: Int = 1): ItemStack {
         val item = ItemStack(Material.POTION)
         val meta = item.itemMeta ?: return item
-        meta.displayName(Component.text("Honor Bottle (+1)", NamedTextColor.AQUA))
-        meta.lore(listOf(Component.text("Consume to gain 1 Honor point.", NamedTextColor.GRAY)))
+        meta.displayName(Component.text("Honor Bottle (+$points)", NamedTextColor.AQUA))
+        meta.lore(listOf(Component.text("Consume to gain $points Honor point(s).", NamedTextColor.GRAY)))
         applyBottleComponents(meta)
 
         meta.setCustomModelData(plugin.config.getInt("custom-model-data.honor_bottle", 10002))
         meta.setEnchantmentGlintOverride(false)
-        meta.persistentDataContainer.set(honorKey, PersistentDataType.INTEGER, 1)
+        meta.persistentDataContainer.set(honorKey, PersistentDataType.INTEGER, points)
         item.itemMeta = meta
         return item
     }

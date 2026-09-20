@@ -27,6 +27,11 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
             plugin.combatListener.resyncEquipment(victim)
         }
 
+        // Reset PvP weapon cooldown fatigue on death so they respawn with default vanilla cooldowns
+        if (plugin.pvpDebuffActive.remove(victim.uniqueId) == true) {
+            plugin.updateWeaponCooldownPenalty(victim)
+        }
+
         plugin.infamyManager.playerDeaths[victim.uniqueId] = (plugin.infamyManager.playerDeaths[victim.uniqueId] ?: 0) + 1
         var killIdStr: String? = null
 
