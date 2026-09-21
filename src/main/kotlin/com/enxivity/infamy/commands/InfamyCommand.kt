@@ -249,7 +249,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 val min = remaining / 60
                 val sec = remaining % 60
                 val timeStr = if (min > 0) "${min}m ${sec}s" else "${sec}s"
-                activeCDs.add("§c- $name: §e$timeStr remaining")
+                activeCDs.add("&c- $name: &e$timeStr remaining")
             }
         }
 
@@ -269,7 +269,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             player.sendMessage(Component.text("You have no abilities currently on cooldown!", NamedTextColor.GREEN))
         } else {
             player.sendMessage(Component.text("=== Your Active Cooldowns ===", NamedTextColor.DARK_RED))
-            activeCDs.forEach { player.sendMessage(Component.text(it)) }
+            activeCDs.forEach { player.sendMessage(com.enxivity.infamy.TeamColor.deserialize(it)) }
         }
     }
 

@@ -20,7 +20,7 @@ data class PlayerSettings(
     var globalSounds: Boolean = true,
     var globalMessages: Boolean = true,
     var abilityMessages: Boolean = true,
-    var cooldownMessages: Boolean = false,
+    var cooldownMessages: Boolean = true,
     var teamMessages: Boolean = true,
     var abilityMessagesInChat: Boolean = false,
     var actionActivation: Boolean = true, // Default ON: Can be toggled in GUI settings
@@ -103,7 +103,7 @@ class InfamyManager(private val plugin: InfamySMP) {
             if (sec != null) {
                 playerSettings[UUID.fromString(k)] = PlayerSettings(
                     sec.getBoolean("sounds", true), sec.getBoolean("msgs", true), sec.getBoolean("ability", true),
-                    sec.getBoolean("cd", false), sec.getBoolean("team", true), sec.getBoolean("abilityChat", false),
+                    sec.getBoolean("cd", true), sec.getBoolean("team", true), sec.getBoolean("abilityChat", false),
                     sec.getBoolean("actionAct", true),
                     sec.getString("sbMode", "OFF")!!, sec.getBoolean("sbTeam", true), sec.getBoolean("sbTeammates", true),
                     sec.getBoolean("sbKills", true), sec.getBoolean("sbDeaths", true), sec.getBoolean("sbKDR", true),

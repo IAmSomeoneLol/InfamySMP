@@ -102,7 +102,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
     private fun msgCD(player: Player, component: Component) {
         val settings = plugin.infamyManager.getSettings(player.uniqueId)
-        if (settings.cooldownMessages) {
+        if (settings.cooldownMessages || settings.abilityMessages) {
             if (settings.abilityMessagesInChat) player.sendMessage(component)
             else player.sendActionBar(component)
         }
