@@ -159,7 +159,6 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
 
     @EventHandler
     fun onInventoryClick(event: InventoryClickEvent) {
-        // ONLY cancels if top inventory is an ECSnapshotHolder. Vanilla Ender Chests are never affected!
         if (event.view.topInventory.holder is ECSnapshotHolder) {
             event.isCancelled = true
             return
@@ -187,6 +186,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
                     22 -> settings.abilityMessages = !settings.abilityMessages
                     23 -> settings.cooldownMessages = !settings.cooldownMessages
                     24 -> settings.teamMessages = !settings.teamMessages
+                    29 -> settings.actionActivation = !settings.actionActivation // Toggle action-based activation
                     30 -> settings.abilityMessagesInChat = !settings.abilityMessagesInChat
                     32 -> { openScoreboardSettingsGUI(player); return }
                     49 -> { openInfoGui(player); return }
@@ -428,6 +428,9 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         inv.setItem(23, createSettingItem(Material.CLOCK, "Cooldown Warnings", settings.cooldownMessages))
         inv.setItem(24, createSettingItem(Material.NAME_TAG, "Team Messages", settings.teamMessages))
 
+        // Slot 29: Ability Activation Via Action toggle
+        inv.setItem(29, createSettingItem(Material.LEVER, "Ability Activation Via Action", settings.actionActivation, listOf("Allows triggering abilities via in-game", "crouch & click actions.")))
+
         val locStr = if (settings.abilityMessagesInChat) "Chat Box" else "Action Bar"
         val locItem = createSettingItem(Material.COMPASS, "Msg Location", true, listOf("Currently: $locStr"))
         inv.setItem(30, locItem)
@@ -516,24 +519,24 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
             AbilityDef("halved_potions", "Halved Potions", "Activation: Passive (All Potions)", listOf("Your potion durations are halved.")),
             AbilityDef("weapon_cooldowns", "Weapon Fatigue", "Activation: Passive (PvP Hit)", listOf("Attacking a player triggers a weapon cooldown penalty.", "Attacking mobs restores default vanilla attack speed.")),
             AbilityDef("double_xp", "Double XP", "Activation: Passive", listOf("You gain 2x Passive XP!")),
-            AbilityDef("hunger_absorption", "Saturating Shield", "Activation: Sneak + Left-Click or Swap Hand (F)", listOf("Consume all active Hunger to convert it", "into temporary Absorption hearts. (${if (haCd >= 60) "${haCd / 60}m" else "${haCd}s"} CD)")),
-            AbilityDef("true_invisibility", "True Invisibility", "Activation: Sneak + Right-Click (Empty Hand)", listOf("Safely hides your Armor, applying", "total Invisibility and Regeneration", "for $tiDur seconds. (${if (tiCd >= 60) "${tiCd / 60}m" else "${tiCd}s"} CD)")),
-            AbilityDef("karma_delay", "Karmic Justice", "Activation: Sneak + Attack (Any Weapon)", listOf("Stop all incoming damage to opponent", "for ${kdDur}s. Afterwards, all blocked damage", "triggers instantly at once. (${if (kdCd >= 60) "${kdCd / 60}m" else "${kdCd}s"} CD)"))
+            AbilityDef("hunger_absorption", "Saturating Shield", "Activation: Sneak + Left-Click or Keybind", listOf("Consume all active Hunger to convert it", "into temporary Absorption hearts. (${if (haCd >= 60) "${haCd / 60}m" else "${haCd}s"} CD)")),
+            AbilityDef("true_invisibility", "True Invisibility", "Activation: Sneak + Right-Click or Keybind", listOf("Safely hides your Armor, applying", "total Invisibility and Regeneration", "for $tiDur seconds. (${if (tiCd >= 60) "${tiCd / 60}m" else "${tiCd}s"} CD)")),
+            AbilityDef("karma_delay", "Karmic Justice", "Activation: Crouch Attack or Keybind Prime", listOf("Stop all incoming damage to opponent", "for ${kdDur}s. Afterwards, all blocked damage", "triggers instantly at once. (${if (kdCd >= 60) "${kdCd / 60}m" else "${kdCd}s"} CD)"))
         )
 
         val infamyDefs = listOf(
-            AbilityDef("sword_block", "Sword Block", "Activation: Right-Click with Sword", listOf("Block incoming damage taking 50%.", "(60s CD)")),
-            AbilityDef("shield_recovery", "Shield Recovery", "Activation: Sneak + Right-Click with Shield", listOf("Pull Shield back up after break.", "Takes 2 hearts of damage. (25s CD)")),
+            AbilityDef("sword_block", "Sword Block", "Activation: Right-Click Sword or Keybind", listOf("Block incoming damage taking 50%.", "(60s CD)")),
+            AbilityDef("shield_recovery", "Shield Recovery", "Activation: Sneak + Right-Click or Keybind", listOf("Pull Shield back up after break.", "Takes 2 hearts of damage. (25s CD)")),
             AbilityDef("axe_pierce", "Axe Pierce", "Activation: Attack blocking enemy with Axe", listOf("Damage through Shields dealing 2 hearts.")),
-            AbilityDef("shield_sacrifice", "Shield Sacrifice", "Activation: Sneak + Left-Click or Swap Hand (F)", listOf("Disable shield for ${if (ssDur >= 60) "${ssDur / 60}m" else "${ssDur}s"} to gain Resistance.", "(${if (ssCd >= 60) "${ssCd / 60}m" else "${ssCd}s"} CD)")),
+            AbilityDef("shield_sacrifice", "Shield Sacrifice", "Activation: Sneak + Click or Keybind", listOf("Disable shield for ${if (ssDur >= 60) "${ssDur / 60}m" else "${ssDur}s"} to gain Resistance.", "(${if (ssCd >= 60) "${ssCd / 60}m" else "${ssCd}s"} CD)")),
             AbilityDef("double_potions", "Double Potions", "Activation: Passive", listOf("Receive DOUBLE TIME for EVERY Potion used.")),
             AbilityDef("villager_wary", "Wary Villagers", "Activation: Passive", listOf("Villagers are wary giving worse prices.")),
             AbilityDef("passive_resistance", "Passive Effect", "Activation: Passive", listOf("Receive Passive effect.")),
             AbilityDef("bad_fortune", "Bad Fortune", "Activation: Passive", listOf("Fortune is worsened or disabled.")),
             AbilityDef("axe_stagger", "Axe Stagger", "Activation: Attack with Axe", listOf("Stagger opponent for ${asTicks / 20.0}s. (${asCd}s CD)")),
-            AbilityDef("bleeding_edge", "Bleeding Edge", "Activation: Right-Click Diamond/Netherite Sword", listOf("Next strike causes bleeding damage over time.", "(60s CD)")),
-            AbilityDef("mace_slam", "Mace Slam & Passive", "Activation: Right-Click Mace", listOf("Dash and create shockwave. (60s CD)")),
-            AbilityDef("boss_sacrifice", "Hellcrush (Boss)", "Activation: Sneak + Right Click (Empty Hand)", listOf("Max team size: 2. Constant Glowing.", "Activate buff but lose Helmet stats. (15m CD)"))
+            AbilityDef("bleeding_edge", "Bleeding Edge", "Activation: Right-Click Sword or Keybind", listOf("Next strike causes bleeding damage over time.", "(60s CD)")),
+            AbilityDef("mace_slam", "Mace Slam & Passive", "Activation: Right-Click Mace or Keybind", listOf("Dash and create shockwave. (60s CD)")),
+            AbilityDef("boss_sacrifice", "Hellcrush (Boss)", "Activation: Sneak + Right Click or Keybind", listOf("Max team size: 2. Constant Glowing.", "Activate buff but lose Helmet stats. (15m CD)"))
         )
 
         var hSlot = 37

@@ -28,6 +28,19 @@ data class KarmaSession(val attackerId: UUID, var accumulatedDamage: Double)
 
 class CombatListener(private val plugin: InfamySMP) : Listener {
 
+    init {
+        instance = this
+    }
+
+    companion object {
+        var instance: CombatListener? = null
+            private set
+
+        fun activateAbility(player: Player, abilityName: String): Boolean {
+            return instance?.activateAbility(player, abilityName) ?: false
+        }
+    }
+
     val swordBlockCooldowns = mutableMapOf<UUID, Long>()
     val swordBlockActiveUntil = mutableMapOf<UUID, Long>()
 
@@ -50,11 +63,11 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
     val karmaCooldowns = mutableMapOf<UUID, Long>()
     val activeKarma = mutableMapOf<UUID, KarmaSession>()
+    val primedKarma = mutableMapOf<UUID, Long>() // Primed via command
 
     val shieldSacrificeCooldowns = mutableMapOf<UUID, Long>()
     val axeStaggerCooldowns = mutableMapOf<UUID, Long>()
 
-    // Clean expired cooldowns
     fun cleanExpiredCooldowns() {
         val now = System.currentTimeMillis()
         swordBlockCooldowns.entries.removeIf { now - it.value > 120000L }
@@ -69,6 +82,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         karmaCooldowns.entries.removeIf { now - it.value > 3600000L }
         shieldSacrificeCooldowns.entries.removeIf { now - it.value > 600000L }
         axeStaggerCooldowns.entries.removeIf { now - it.value > 90000L }
+        primedKarma.entries.removeIf { now - it.value > 30000L }
     }
 
     private fun msg(player: Player, text: String, color: NamedTextColor) {
@@ -130,7 +144,6 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         }
     }
 
-    // Player quit clean
     @EventHandler
     fun onQuit(event: org.bukkit.event.player.PlayerQuitEvent) {
         val uuid = event.player.uniqueId
@@ -140,6 +153,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         activeSacrifices.remove(uuid)
         activeBleedCharge.remove(uuid)
         activeKarma.remove(uuid)
+        primedKarma.remove(uuid)
         plugin.pvpDebuffActive.remove(uuid)
     }
 
@@ -165,7 +179,34 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         }
     }
 
-    private fun activateSaturatingShield(player: Player) {
+    // ==========================================
+    // MANUAL ABILITY ACTIVATION METHODS
+    // ==========================================
+
+    fun activateAbility(player: Player, rawName: String): Boolean {
+        val name = rawName.lowercase().replace("_", "").replace(" ", "")
+        return when (name) {
+            "trueinvisibility", "invisibility" -> activateTrueInvisibility(player)
+            "maceslam", "mace", "slam" -> activateMaceSlam(player)
+            "swordblock", "parry" -> activateSwordBlock(player)
+            "bleedingedge", "bleed" -> activateBleedingEdge(player)
+            "karmicjustice", "karma", "karmadelay" -> primeKarma(player)
+            "shieldsacrifice", "sacrifice" -> activateShieldSacrifice(player)
+            "shieldrecovery", "recovery" -> activateShieldRecovery(player)
+            "saturatingshield", "hungerabsorption", "absorb" -> activateSaturatingShield(player)
+            "hellcrush", "bosssacrifice" -> activateHellcrush(player)
+            else -> {
+                player.sendMessage(Component.text("Unknown ability: $rawName. Available: TrueInvisibility, MaceSlam, SwordBlock, BleedingEdge, KarmicJustice, ShieldSacrifice, ShieldRecovery, SaturatingShield, Hellcrush", NamedTextColor.RED))
+                false
+            }
+        }
+    }
+
+    fun activateSaturatingShield(player: Player): Boolean {
+        if (!plugin.infamyManager.hasAbility(player, "hunger_absorption", true)) {
+            player.sendMessage(Component.text("You have not unlocked Saturating Shield!", NamedTextColor.RED))
+            return false
+        }
         val now = System.currentTimeMillis()
         val lastUsed = honorAbsorbCooldowns[player.uniqueId] ?: 0
         val cdMs = plugin.config.getLong("abilities-config.hunger-absorption.cooldown-seconds", 60) * 1000L
@@ -192,19 +233,90 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 player.world.playSound(player.location, Sound.ENTITY_ILLUSIONER_CAST_SPELL, 1f, 1.2f)
 
                 try {
-                    player.world.spawnParticle(org.bukkit.Particle.valueOf("TRIAL_SPAWNER_DETECTION_OMINOUS"), player.location.add(0.0, 1.0, 0.0), 15, 0.3, 0.5, 0.3, 0.02)
+                    player.world.spawnParticle(Particle.valueOf("TRIAL_SPAWNER_DETECTION_OMINOUS"), player.location.add(0.0, 1.0, 0.0), 15, 0.3, 0.5, 0.3, 0.02)
                 } catch (e: Exception) {
                     player.world.spawnParticle(Particle.SOUL_FIRE_FLAME, player.location.add(0.0, 1.0, 0.0), 15, 0.3, 0.5, 0.3, 0.02)
                 }
+                return true
             } else {
                 msg(player, "You have no hunger to consume!", NamedTextColor.RED)
+                return false
             }
         } else {
             msgCD(player, "Absorption conversion on CD! (${(cdMs - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            return false
         }
     }
 
-    private fun activateShieldSacrifice(player: Player) {
+    fun activateTrueInvisibility(player: Player): Boolean {
+        if (!plugin.infamyManager.hasAbility(player, "true_invisibility", true)) {
+            player.sendMessage(Component.text("You have not unlocked True Invisibility!", NamedTextColor.RED))
+            return false
+        }
+        val now = System.currentTimeMillis()
+        val lastUsed = honorInvisCooldowns[player.uniqueId] ?: 0
+        val cdMs = plugin.config.getLong("abilities-config.true-invisibility.cooldown-seconds", 300) * 1000L
+        val durSecs = plugin.config.getLong("abilities-config.true-invisibility.duration-seconds", 20)
+
+        if (now - lastUsed > cdMs) {
+            honorInvisCooldowns[player.uniqueId] = now
+            player.addPotionEffect(PotionEffect(PotionEffectType.INVISIBILITY, (durSecs * 20).toInt(), 0, false, false, true))
+            player.addPotionEffect(PotionEffect(PotionEffectType.REGENERATION, (durSecs * 20).toInt(), 1, false, false, true))
+
+            activeTrueInvis.add(player.uniqueId)
+            forceHideEquipment(player)
+
+            msg(player, "True Invisibility activated for ${durSecs}s!", NamedTextColor.AQUA)
+
+            object : BukkitRunnable() {
+                var ticks = 0
+                override fun run() {
+                    if (!player.isOnline || player.isDead || ticks >= (durSecs * 20)) {
+                        if (player.isOnline) {
+                            resyncEquipment(player)
+                            msg(player, "True Invisibility faded. Equipment visible.", NamedTextColor.GRAY)
+                        } else {
+                            activeTrueInvis.remove(player.uniqueId)
+                        }
+                        cancel()
+                        return
+                    }
+                    forceHideEquipment(player)
+                    ticks += 5
+                }
+            }.runTaskTimer(plugin, 0L, 5L)
+            return true
+        } else {
+            msgCD(player, "True Invisibility on CD! (${(cdMs - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            return false
+        }
+    }
+
+    fun primeKarma(player: Player): Boolean {
+        if (!plugin.infamyManager.hasAbility(player, "karma_delay", true)) {
+            player.sendMessage(Component.text("You have not unlocked Karmic Justice!", NamedTextColor.RED))
+            return false
+        }
+        val now = System.currentTimeMillis()
+        val lastUsed = karmaCooldowns[player.uniqueId] ?: 0
+        val cdMs = plugin.config.getLong("abilities-config.karma-delay.cooldown-seconds", 180) * 1000L
+
+        if (now - lastUsed > cdMs) {
+            primedKarma[player.uniqueId] = now
+            msg(player, "Karmic Justice primed! Your next hit will apply delayed karma.", NamedTextColor.AQUA)
+            player.world.playSound(player.location, Sound.BLOCK_BEACON_ACTIVATE, 1.0f, 1.5f)
+            return true
+        } else {
+            msgCD(player, "Karmic Justice on CD! (${(cdMs - (now - lastUsed)) / 1000}s)", NamedTextColor.RED)
+            return false
+        }
+    }
+
+    fun activateShieldSacrifice(player: Player): Boolean {
+        if (!plugin.infamyManager.hasAbility(player, "shield_sacrifice", false)) {
+            player.sendMessage(Component.text("You have not unlocked Shield Sacrifice!", NamedTextColor.RED))
+            return false
+        }
         val now = System.currentTimeMillis()
         val lastUsed = shieldSacrificeCooldowns[player.uniqueId] ?: 0
         val cdMs = plugin.config.getLong("abilities-config.shield-sacrifice.cooldown-seconds", 300) * 1000L
@@ -220,10 +332,196 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
             val durStr = if (durSecs >= 60) "${durSecs / 60} minutes" else "${durSecs} seconds"
             msg(player, "Shield Sacrificed! You gained Resistance for $durStr.", NamedTextColor.DARK_RED)
+            return true
         } else {
             msgCD(player, "Shield Sacrifice on CD! (${(cdMs - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            return false
         }
     }
+
+    fun activateShieldRecovery(player: Player): Boolean {
+        if (!plugin.infamyManager.hasAbility(player, "shield_recovery", false)) {
+            player.sendMessage(Component.text("You have not unlocked Shield Recovery!", NamedTextColor.RED))
+            return false
+        }
+        if (!player.hasCooldown(Material.SHIELD)) {
+            player.sendMessage(Component.text("Your shield is not on cooldown!", NamedTextColor.RED))
+            return false
+        }
+        val now = System.currentTimeMillis()
+        val lastUsed = shieldAbilityCooldowns[player.uniqueId] ?: 0
+        val cdSecs = plugin.config.getLong("abilities-config.shield-recovery.cooldown-seconds", 25)
+        val hCost = plugin.config.getDouble("abilities-config.shield-recovery.health-cost", 4.0)
+
+        if (now - lastUsed > cdSecs * 1000L) {
+            shieldAbilityCooldowns[player.uniqueId] = now
+            player.setCooldown(Material.SHIELD, 0)
+            player.health = (player.health - hCost).coerceAtLeast(0.0)
+
+            msg(player, "Shield recovered instantly! (-${hCost/2} Hearts)", NamedTextColor.GREEN)
+            player.world.playSound(player.location, Sound.ITEM_SHIELD_BLOCK, 1f, 1.5f)
+            return true
+        } else {
+            msgCD(player, "Shield Recovery on cooldown! (${((cdSecs * 1000L) - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            return false
+        }
+    }
+
+    fun activateSwordBlock(player: Player): Boolean {
+        if (!plugin.infamyManager.hasAbility(player, "sword_block", false)) {
+            player.sendMessage(Component.text("You have not unlocked Sword Block!", NamedTextColor.RED))
+            return false
+        }
+        val now = System.currentTimeMillis()
+        val lastUsed = swordBlockCooldowns[player.uniqueId] ?: 0
+        val cdSecs = plugin.config.getLong("abilities-config.sword-block.cooldown-seconds", 60)
+        val durSecs = plugin.config.getLong("abilities-config.sword-block.duration-seconds", 5)
+
+        if (now - lastUsed > cdSecs * 1000L) {
+            swordBlockCooldowns[player.uniqueId] = now
+            swordBlockActiveUntil[player.uniqueId] = now + (durSecs * 1000L)
+            msg(player, "Sword Block armed! Guard active for ${durSecs}s.", NamedTextColor.GREEN)
+            player.world.playSound(player.location, Sound.ITEM_SHIELD_BLOCK, 1f, 1.2f)
+            return true
+        } else {
+            msgCD(player, "Sword Block on CD! (${(cdSecs * 1000L - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            return false
+        }
+    }
+
+    fun activateBleedingEdge(player: Player): Boolean {
+        if (!plugin.infamyManager.hasAbility(player, "bleeding_edge", false)) {
+            player.sendMessage(Component.text("You have not unlocked Bleeding Edge!", NamedTextColor.RED))
+            return false
+        }
+        val now = System.currentTimeMillis()
+        val lastUsed = bleedCooldowns[player.uniqueId] ?: 0
+        val cdSecs = plugin.config.getLong("abilities-config.bleeding-edge.cooldown-seconds", 60)
+        val timeoutSecs = plugin.config.getLong("abilities-config.bleeding-edge.prime-timeout-seconds", 4)
+
+        if (now - lastUsed > cdSecs * 1000L) {
+            bleedCooldowns[player.uniqueId] = now
+            activeBleedCharge[player.uniqueId] = now
+            msg(player, "Bleeding Edge primed! Your next strike will inflict bleeding.", NamedTextColor.DARK_RED)
+            player.world.playSound(player.location, Sound.ITEM_ARMOR_EQUIP_IRON, 1f, 0.5f)
+
+            val showParticles = plugin.config.getBoolean("settings.show-ability-particles", true)
+            if (showParticles) {
+                object : BukkitRunnable() {
+                    var trailTicks = 0
+                    override fun run() {
+                        if (!activeBleedCharge.containsKey(player.uniqueId) || trailTicks >= (timeoutSecs * 20) || !player.isOnline || player.isDead) {
+                            cancel()
+                            return
+                        }
+                        val redDust = org.bukkit.Particle.DustOptions(org.bukkit.Color.RED, 1.0f)
+                        player.world.spawnParticle(Particle.DUST, player.location.add(0.0, 1.0, 0.0), 3, 0.3, 0.3, 0.3, 0.0, redDust)
+                        trailTicks += 2
+                    }
+                }.runTaskTimer(plugin, 0L, 2L)
+            }
+
+            plugin.server.scheduler.runTaskLater(plugin, Runnable {
+                if (activeBleedCharge.containsKey(player.uniqueId)) {
+                    activeBleedCharge.remove(player.uniqueId)
+                    msg(player, "Bleeding Edge charge dissipated.", NamedTextColor.GRAY)
+                }
+            }, timeoutSecs * 20L)
+            return true
+        } else {
+            msgCD(player, "Bleeding Edge on CD! (${(cdSecs * 1000L - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            return false
+        }
+    }
+
+    fun activateMaceSlam(player: Player): Boolean {
+        // Mace slam can only work if you hold a mace
+        val mainHand = player.inventory.itemInMainHand
+        val offHand = player.inventory.itemInOffHand
+        if (mainHand.type != Material.MACE && offHand.type != Material.MACE) {
+            player.sendMessage(Component.text("You must be holding a Mace to use Mace Slam!", NamedTextColor.RED))
+            return false
+        }
+
+        if (!plugin.infamyManager.hasAbility(player, "mace_slam", false)) {
+            player.sendMessage(Component.text("You have not unlocked Mace Slam!", NamedTextColor.RED))
+            return false
+        }
+        val now = System.currentTimeMillis()
+        val lastUsed = maceCooldowns[player.uniqueId] ?: 0
+        val cdSecs = plugin.config.getLong("abilities-config.mace-slam.cooldown-seconds", 60)
+
+        if (now - lastUsed > cdSecs * 1000L) {
+            maceCooldowns[player.uniqueId] = now
+            val startHeight = player.location.y
+            player.velocity = player.location.direction.multiply(1.5).setY(1.4)
+            player.world.playSound(player.location, Sound.ENTITY_ENDER_DRAGON_FLAP, 1.2f, 0.8f)
+
+            msg(player, "Mace Slam activated! Crashing down...", NamedTextColor.DARK_RED)
+            maceActivePlayers.add(player.uniqueId)
+
+            val showParticles = plugin.config.getBoolean("settings.show-ability-particles", true)
+
+            object : BukkitRunnable() {
+                override fun run() {
+                    if (player.isDead || !player.isOnline) {
+                        maceActivePlayers.remove(player.uniqueId)
+                        cancel()
+                        return
+                    }
+                    if (showParticles) {
+                        player.world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, player.location.add(0.0, 1.0, 0.0), 5, 0.2, 0.2, 0.2, 0.02)
+                    }
+                    if (player.velocity.y <= 0.0 && (player.isOnGround || player.location.subtract(0.0, 0.1, 0.0).block.type.isSolid)) {
+                        createMaceShockwave(player, startHeight, showParticles)
+                        maceActivePlayers.remove(player.uniqueId)
+                        cancel()
+                    }
+                }
+            }.runTaskTimer(plugin, 1L, 1L)
+            return true
+        } else {
+            msgCD(player, "Mace Slam on CD! (${(cdSecs * 1000L - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            return false
+        }
+    }
+
+    fun activateHellcrush(player: Player): Boolean {
+        if (!plugin.infamyManager.hasAbility(player, "boss_sacrifice", false)) {
+            player.sendMessage(Component.text("You have not unlocked Hellcrush!", NamedTextColor.RED))
+            return false
+        }
+        val now = System.currentTimeMillis()
+        val lastUsed = sacrificeCooldowns[player.uniqueId] ?: 0
+        val cdSecs = plugin.config.getLong("abilities-config.hellcrush.cooldown-seconds", 900)
+        val durSecs = plugin.config.getLong("abilities-config.hellcrush.duration-seconds", 300)
+
+        if (now - lastUsed > cdSecs * 1000L) {
+            sacrificeCooldowns[player.uniqueId] = now
+            activeSacrifices.add(player.uniqueId)
+
+            msg(player, "Hellcrush activated, Helmet is now Defective", NamedTextColor.DARK_RED)
+            player.world.playSound(player.location, Sound.ENTITY_ITEM_BREAK, 1.2f, 0.7f)
+
+            plugin.server.scheduler.runTaskLater(plugin, Runnable {
+                if (activeSacrifices.contains(player.uniqueId)) {
+                    activeSacrifices.remove(player.uniqueId)
+                    if (player.isOnline) {
+                        restoreHelmet(player)
+                        msg(player, "Your Hellcrush fury has faded. Helmet is no longer defective.", NamedTextColor.GRAY)
+                    }
+                }
+            }, durSecs * 20L)
+            return true
+        } else {
+            msgCD(player, "Hellcrush is on cooldown! (${((cdSecs * 1000L) - (now - lastUsed)) / 1000 / 60} mins left)", NamedTextColor.RED)
+            return false
+        }
+    }
+
+    // ==========================================
+    // ACTION-BASED ACTIVATION LISTENERS
+    // ==========================================
 
     @EventHandler
     fun onSwapHand(event: org.bukkit.event.player.PlayerSwapHandItemsEvent) {
@@ -232,6 +530,9 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         if (activeTrueInvis.contains(player.uniqueId)) {
             plugin.server.scheduler.runTask(plugin, Runnable { if (player.isOnline) forceHideEquipment(player) })
         }
+
+        // Checks if action-based activations are enabled in player settings
+        if (!plugin.infamyManager.getSettings(player.uniqueId).actionActivation) return
 
         if (player.isSneaking && event.mainHandItem.type.isAir && plugin.infamyManager.hasAbility(player, "hunger_absorption", true)) {
             event.isCancelled = true
@@ -258,75 +559,21 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         val isLeftClick = action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK
         val isRightClick = action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK
 
+        // Obey actionActivation setting
+        if (!plugin.infamyManager.getSettings(player.uniqueId).actionActivation) return
+
         if (player.isSneaking && mainItem.type.isAir && isLeftClick && plugin.infamyManager.hasAbility(player, "hunger_absorption", true)) {
             activateSaturatingShield(player)
             return
         }
 
         if (player.isSneaking && mainItem.type.isAir && isRightClick && plugin.infamyManager.hasAbility(player, "true_invisibility", true)) {
-            val now = System.currentTimeMillis()
-            val lastUsed = honorInvisCooldowns[player.uniqueId] ?: 0
-            val cdMs = plugin.config.getLong("abilities-config.true-invisibility.cooldown-seconds", 300) * 1000L
-            val durSecs = plugin.config.getLong("abilities-config.true-invisibility.duration-seconds", 20)
-
-            if (now - lastUsed > cdMs) {
-                honorInvisCooldowns[player.uniqueId] = now
-                player.addPotionEffect(PotionEffect(PotionEffectType.INVISIBILITY, (durSecs * 20).toInt(), 0, false, false, true))
-                player.addPotionEffect(PotionEffect(PotionEffectType.REGENERATION, (durSecs * 20).toInt(), 1, false, false, true))
-
-                activeTrueInvis.add(player.uniqueId)
-                forceHideEquipment(player)
-
-                msg(player, "True Invisibility activated for ${durSecs}s!", NamedTextColor.AQUA)
-
-                object : BukkitRunnable() {
-                    var ticks = 0
-                    override fun run() {
-                        if (!player.isOnline || player.isDead || ticks >= (durSecs * 20)) {
-                            if (player.isOnline) {
-                                resyncEquipment(player)
-                                msg(player, "True Invisibility faded. Equipment visible.", NamedTextColor.GRAY)
-                            } else {
-                                activeTrueInvis.remove(player.uniqueId)
-                            }
-                            cancel()
-                            return
-                        }
-                        forceHideEquipment(player)
-                        ticks += 5
-                    }
-                }.runTaskTimer(plugin, 0L, 5L)
-            } else {
-                msgCD(player, "True Invisibility on CD! (${(cdMs - (now - lastUsed))/1000}s)", NamedTextColor.RED)
-            }
+            activateTrueInvisibility(player)
             return
         }
 
         if (player.isSneaking && mainItem.type.isAir && isRightClick && plugin.infamyManager.hasAbility(player, "boss_sacrifice", false)) {
-            val now = System.currentTimeMillis()
-            val lastUsed = sacrificeCooldowns[player.uniqueId] ?: 0
-            val cdSecs = plugin.config.getLong("abilities-config.hellcrush.cooldown-seconds", 900)
-            val durSecs = plugin.config.getLong("abilities-config.hellcrush.duration-seconds", 300)
-
-            if (now - lastUsed > cdSecs * 1000L) {
-                sacrificeCooldowns[player.uniqueId] = now
-                activeSacrifices.add(player.uniqueId)
-
-                msg(player, "Hellcrush activated, Helmet is now Defective", NamedTextColor.DARK_RED)
-                player.world.playSound(player.location, Sound.ENTITY_ITEM_BREAK, 1.2f, 0.7f)
-
-                plugin.server.scheduler.runTaskLater(plugin, Runnable {
-                    if (activeSacrifices.contains(player.uniqueId)) {
-                        activeSacrifices.remove(player.uniqueId)
-                        if (player.isOnline) {
-                            restoreHelmet(player)
-                            msg(player, "Your Hellcrush fury has faded. Helmet is no longer defective.", NamedTextColor.GRAY)
-                        }
-                    }
-                }, durSecs * 20L)
-            } else {
-                msgCD(player, "Hellcrush is on cooldown! (${((cdSecs * 1000L) - (now - lastUsed)) / 1000 / 60} mins left)", NamedTextColor.RED)
-            }
+            activateHellcrush(player)
             return
         }
 
@@ -336,119 +583,25 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         }
 
         if (player.isSneaking && (mainItem.type == Material.SHIELD || offItem.type == Material.SHIELD) && isRightClick && plugin.infamyManager.hasAbility(player, "shield_recovery", false)) {
-            if (player.hasCooldown(Material.SHIELD)) {
-                val now = System.currentTimeMillis()
-                val lastUsed = shieldAbilityCooldowns[player.uniqueId] ?: 0
-                val cdSecs = plugin.config.getLong("abilities-config.shield-recovery.cooldown-seconds", 25)
-                val hCost = plugin.config.getDouble("abilities-config.shield-recovery.health-cost", 4.0)
-
-                if (now - lastUsed > cdSecs * 1000L) {
-                    shieldAbilityCooldowns[player.uniqueId] = now
-                    player.setCooldown(Material.SHIELD, 0)
-                    player.health = (player.health - hCost).coerceAtLeast(0.0)
-
-                    msg(player, "Shield recovered instantly! (-${hCost/2} Hearts)", NamedTextColor.GREEN)
-                    player.world.playSound(player.location, Sound.ITEM_SHIELD_BLOCK, 1f, 1.5f)
-                } else {
-                    msgCD(player, "Shield Recovery on cooldown! (${((cdSecs * 1000L) - (now - lastUsed))/1000}s)", NamedTextColor.RED)
-                }
-            }
+            activateShieldRecovery(player)
             return
         }
 
         val item = event.item ?: return
 
         if (isRightClick && item.type.name.endsWith("_SWORD") && plugin.infamyManager.hasAbility(player, "sword_block", false)) {
-            val now = System.currentTimeMillis()
-            val lastUsed = swordBlockCooldowns[player.uniqueId] ?: 0
-            val cdSecs = plugin.config.getLong("abilities-config.sword-block.cooldown-seconds", 60)
-            val durSecs = plugin.config.getLong("abilities-config.sword-block.duration-seconds", 5)
-
-            if (now - lastUsed > cdSecs * 1000L) {
-                swordBlockCooldowns[player.uniqueId] = now
-                swordBlockActiveUntil[player.uniqueId] = now + (durSecs * 1000L)
-                msg(player, "Sword Block armed! Guard active for ${durSecs}s.", NamedTextColor.GREEN)
-                player.world.playSound(player.location, Sound.ITEM_SHIELD_BLOCK, 1f, 1.2f)
-            } else {
-                msgCD(player, "Sword Block on CD! (${(cdSecs * 1000L - (now - lastUsed))/1000}s)", NamedTextColor.RED)
-            }
+            activateSwordBlock(player)
+            return
         }
 
         if (isRightClick && (item.type == Material.DIAMOND_SWORD || item.type == Material.NETHERITE_SWORD) && plugin.infamyManager.hasAbility(player, "bleeding_edge", false)) {
-            val now = System.currentTimeMillis()
-            val lastUsed = bleedCooldowns[player.uniqueId] ?: 0
-            val cdSecs = plugin.config.getLong("abilities-config.bleeding-edge.cooldown-seconds", 60)
-            val timeoutSecs = plugin.config.getLong("abilities-config.bleeding-edge.prime-timeout-seconds", 4)
-
-            if (now - lastUsed > cdSecs * 1000L) {
-                bleedCooldowns[player.uniqueId] = now
-                activeBleedCharge[player.uniqueId] = now
-                msg(player, "Bleeding Edge primed! Your next strike will inflict bleeding.", NamedTextColor.DARK_RED)
-                player.world.playSound(player.location, Sound.ITEM_ARMOR_EQUIP_IRON, 1f, 0.5f)
-
-                val showParticles = plugin.config.getBoolean("settings.show-ability-particles", true)
-                if (showParticles) {
-                    object : BukkitRunnable() {
-                        var trailTicks = 0
-                        override fun run() {
-                            if (!activeBleedCharge.containsKey(player.uniqueId) || trailTicks >= (timeoutSecs * 20) || !player.isOnline || player.isDead) {
-                                cancel()
-                                return
-                            }
-                            val redDust = org.bukkit.Particle.DustOptions(org.bukkit.Color.RED, 1.0f)
-                            player.world.spawnParticle(Particle.DUST, player.location.add(0.0, 1.0, 0.0), 3, 0.3, 0.3, 0.3, 0.0, redDust)
-                            trailTicks += 2
-                        }
-                    }.runTaskTimer(plugin, 0L, 2L)
-                }
-
-                plugin.server.scheduler.runTaskLater(plugin, Runnable {
-                    if (activeBleedCharge.containsKey(player.uniqueId)) {
-                        activeBleedCharge.remove(player.uniqueId)
-                        msg(player, "Bleeding Edge charge dissipated.", NamedTextColor.GRAY)
-                    }
-                }, timeoutSecs * 20L)
-            } else {
-                msgCD(player, "Bleeding Edge on CD! (${(cdSecs * 1000L - (now - lastUsed))/1000}s)", NamedTextColor.RED)
-            }
+            activateBleedingEdge(player)
+            return
         }
 
         if (isRightClick && item.type == Material.MACE && plugin.infamyManager.hasAbility(player, "mace_slam", false)) {
-            val now = System.currentTimeMillis()
-            val lastUsed = maceCooldowns[player.uniqueId] ?: 0
-            val cdSecs = plugin.config.getLong("abilities-config.mace-slam.cooldown-seconds", 60)
-
-            if (now - lastUsed > cdSecs * 1000L) {
-                maceCooldowns[player.uniqueId] = now
-                val startHeight = player.location.y
-                player.velocity = player.location.direction.multiply(1.5).setY(1.4)
-                player.world.playSound(player.location, Sound.ENTITY_ENDER_DRAGON_FLAP, 1.2f, 0.8f)
-
-                msg(player, "Mace Slam activated! Crashing down...", NamedTextColor.DARK_RED)
-                maceActivePlayers.add(player.uniqueId)
-
-                val showParticles = plugin.config.getBoolean("settings.show-ability-particles", true)
-
-                object : BukkitRunnable() {
-                    override fun run() {
-                        if (player.isDead || !player.isOnline) {
-                            maceActivePlayers.remove(player.uniqueId)
-                            cancel()
-                            return
-                        }
-                        if (showParticles) {
-                            player.world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, player.location.add(0.0, 1.0, 0.0), 5, 0.2, 0.2, 0.2, 0.02)
-                        }
-                        if (player.velocity.y <= 0.0 && (player.isOnGround || player.location.subtract(0.0, 0.1, 0.0).block.type.isSolid)) {
-                            createMaceShockwave(player, startHeight, showParticles)
-                            maceActivePlayers.remove(player.uniqueId)
-                            cancel()
-                        }
-                    }
-                }.runTaskTimer(plugin, 1L, 1L)
-            } else {
-                msgCD(player, "Mace Slam on CD! (${(cdSecs * 1000L - (now - lastUsed))/1000}s)", NamedTextColor.RED)
-            }
+            activateMaceSlam(player)
+            return
         }
     }
 
@@ -460,7 +613,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             player.world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, player.location, 30, 0.5, 0.1, 0.5, 0.2)
 
             try {
-                player.world.spawnParticle(org.bukkit.Particle.valueOf("SMASH_GROUND_PARTICLE"), player.location, 10, 0.5, 0.1, 0.5, 0.2)
+                player.world.spawnParticle(Particle.valueOf("SMASH_GROUND_PARTICLE"), player.location, 10, 0.5, 0.1, 0.5, 0.2)
             } catch (e: Exception) {
                 try {
                     val blockData = player.location.subtract(0.0, 1.0, 0.0).block.blockData
@@ -468,7 +621,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 } catch (e2: Exception) { }
             }
 
-            player.world.playSound(player.location, org.bukkit.Sound.ITEM_MACE_SMASH_GROUND, 1.2f, 0.9f)
+            player.world.playSound(player.location, Sound.ITEM_MACE_SMASH_GROUND, 1.2f, 0.9f)
         } else {
             player.world.playSound(player.location, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.9f)
         }
@@ -616,7 +769,11 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             }
         }
 
-        if (plugin.infamyManager.hasAbility(attacker, "karma_delay", true) && attacker.isSneaking) {
+        // Karmic Justice: triggers if primed via command OR if actionActivation is true and player crouch-attacks
+        val isKarmaPrimed = primedKarma.remove(attacker.uniqueId) != null
+        val isCrouchAction = attacker.isSneaking && plugin.infamyManager.getSettings(attacker.uniqueId).actionActivation
+
+        if (plugin.infamyManager.hasAbility(attacker, "karma_delay", true) && (isKarmaPrimed || isCrouchAction)) {
             if (activeKarma.containsKey(victim.uniqueId)) return
 
             val now = System.currentTimeMillis()

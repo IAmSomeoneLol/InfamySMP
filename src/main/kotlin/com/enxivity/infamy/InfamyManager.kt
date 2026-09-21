@@ -23,6 +23,7 @@ data class PlayerSettings(
     var cooldownMessages: Boolean = false,
     var teamMessages: Boolean = true,
     var abilityMessagesInChat: Boolean = false,
+    var actionActivation: Boolean = true, // Default ON: Can be toggled in GUI settings
     var scoreboardMode: String = "OFF",
     var sbTeam: Boolean = true,
     var sbTeammates: Boolean = true,
@@ -70,6 +71,7 @@ class InfamyManager(private val plugin: InfamySMP) {
             mapOf(
                 "sounds" to it.value.globalSounds, "msgs" to it.value.globalMessages, "ability" to it.value.abilityMessages,
                 "cd" to it.value.cooldownMessages, "team" to it.value.teamMessages, "abilityChat" to it.value.abilityMessagesInChat,
+                "actionAct" to it.value.actionActivation,
                 "sbMode" to it.value.scoreboardMode, "sbTeam" to it.value.sbTeam, "sbTeammates" to it.value.sbTeammates,
                 "sbKills" to it.value.sbKills, "sbDeaths" to it.value.sbDeaths, "sbKDR" to it.value.sbKDR,
                 "sbPoints" to it.value.sbPoints, "sbOnline" to it.value.sbOnline
@@ -102,6 +104,7 @@ class InfamyManager(private val plugin: InfamySMP) {
                 playerSettings[UUID.fromString(k)] = PlayerSettings(
                     sec.getBoolean("sounds", true), sec.getBoolean("msgs", true), sec.getBoolean("ability", true),
                     sec.getBoolean("cd", false), sec.getBoolean("team", true), sec.getBoolean("abilityChat", false),
+                    sec.getBoolean("actionAct", true),
                     sec.getString("sbMode", "OFF")!!, sec.getBoolean("sbTeam", true), sec.getBoolean("sbTeammates", true),
                     sec.getBoolean("sbKills", true), sec.getBoolean("sbDeaths", true), sec.getBoolean("sbKDR", true),
                     sec.getBoolean("sbPoints", true), sec.getBoolean("sbOnline", true)

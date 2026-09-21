@@ -31,14 +31,23 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         if (args.isEmpty()) {
             if (sender is Player) plugin.itemRestrictionsListener.openInfoGui(sender)
-            else sender.sendMessage(Component.text("Usage: /infamy <info|team|level|withdraw|bottle|history|cd|debugkill|add|top|settings|abilities|eventhost> ...", NamedTextColor.RED))
+            else sender.sendMessage(Component.text("Usage: /infamy <info|team|level|withdraw|bottle|history|cd|debugkill|add|top|settings|ability|eventhost> ...", NamedTextColor.RED))
             return true
         }
 
         when (args[0].lowercase()) {
             "info" -> if (sender is Player) plugin.itemRestrictionsListener.openInfoGui(sender)
             "settings" -> if (sender is Player) plugin.itemRestrictionsListener.openSettingsGUI(sender)
-            "abilities" -> if (sender is Player) plugin.itemRestrictionsListener.openAbilitiesGUI(sender)
+            "ability" -> {
+                if (args.size >= 3 && args[1].lowercase() == "activate") {
+                    if (sender is Player) handleActivateAbilityCommand(sender, args[2])
+                    else sender.sendMessage(Component.text("Only players can activate abilities.", NamedTextColor.RED))
+                } else if (sender is Player) {
+                    plugin.itemRestrictionsListener.openAbilitiesGUI(sender)
+                } else {
+                    sender.sendMessage(Component.text("Usage: /infamy ability activate <name>", NamedTextColor.RED))
+                }
+            }
             "cd" -> if (sender is Player) handleCooldownsCommand(sender, args)
             "debugkill" -> handleDebugKillCommand(sender, args)
             "eventhost" -> handleEventHostCommand(sender, args)
@@ -72,12 +81,13 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): MutableList<String> {
         val completions = mutableListOf<String>()
         if (args.size == 1) {
-            val subs = mutableListOf("team", "level", "withdraw", "history", "info", "cd", "settings", "abilities", "eventhost")
+            val subs = mutableListOf("team", "level", "withdraw", "history", "info", "cd", "settings", "ability", "eventhost")
             if (isAdmin(sender)) subs.addAll(listOf("add", "bottle", "debugkill", "top"))
             completions.addAll(subs.filter { it.startsWith(args[0].lowercase()) })
         } else if (args.size == 2) {
             when (args[0].lowercase()) {
                 "team" -> completions.addAll(listOf("create", "disband", "invite", "accept", "decline", "leave", "kick", "list", "chat", "color", "icon", "leadership", "coords", "promote", "demote", "rename").filter { it.startsWith(args[1].lowercase()) })
+                "ability" -> completions.addAll(listOf("activate").filter { it.startsWith(args[1].lowercase()) })
                 "add", "level", "debugkill" -> if (isAdmin(sender)) completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[1].lowercase()) })
                 "bottle" -> if (isAdmin(sender)) completions.addAll(listOf("honor", "infamy", "pure").filter { it.startsWith(args[1].lowercase()) })
                 "top" -> if (isAdmin(sender)) completions.add("refresh")
@@ -86,7 +96,22 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 "eventhost" -> if (isAdmin(sender)) completions.addAll(listOf("true", "false", "configcalendar").filter { it.startsWith(args[1].lowercase()) })
             }
         } else if (args.size == 3) {
-            if ((args[0].lowercase() == "add" || args[0].lowercase() == "bottle" || args[0].lowercase() == "top") && isAdmin(sender)) {
+            if (args[0].lowercase() == "ability" && args[1].lowercase() == "activate") {
+                if (sender is Player) {
+                    val available = mutableListOf<String>()
+                    val im = plugin.infamyManager
+                    if (im.hasAbility(sender, "true_invisibility", true)) available.add("TrueInvisibility")
+                    if (im.hasAbility(sender, "hunger_absorption", true)) available.add("SaturatingShield")
+                    if (im.hasAbility(sender, "karma_delay", true)) available.add("KarmicJustice")
+                    if (im.hasAbility(sender, "sword_block", false)) available.add("SwordBlock")
+                    if (im.hasAbility(sender, "shield_sacrifice", false)) available.add("ShieldSacrifice")
+                    if (im.hasAbility(sender, "shield_recovery", false)) available.add("ShieldRecovery")
+                    if (im.hasAbility(sender, "bleeding_edge", false)) available.add("BleedingEdge")
+                    if (im.hasAbility(sender, "mace_slam", false)) available.add("MaceSlam")
+                    if (im.hasAbility(sender, "boss_sacrifice", false)) available.add("Hellcrush")
+                    completions.addAll(available.filter { it.lowercase().startsWith(args[2].lowercase()) })
+                }
+            } else if ((args[0].lowercase() == "add" || args[0].lowercase() == "bottle" || args[0].lowercase() == "top") && isAdmin(sender)) {
                 completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[2].lowercase()) })
             } else if (args[0].lowercase() == "debugkill" && isAdmin(sender)) {
                 completions.addAll(listOf("DROPPED", "PICKED_UP", "STASHED", "WITHDRAWN", "STOLEN", "LOST").filter { it.startsWith(args[2].uppercase()) })
@@ -104,6 +129,22 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             }
         }
         return completions
+    }
+
+    private fun handleActivateAbilityCommand(player: Player, abilityName: String) {
+        val cl = plugin.combatListener
+        when (abilityName.lowercase().replace("_", "")) {
+            "trueinvisibility", "trueinvis", "invis", "invisibility" -> cl.activateTrueInvisibility(player)
+            "saturatingshield", "satshield", "hungerabsorption", "absorption", "hunger" -> cl.activateSaturatingShield(player)
+            "karmicjustice", "karma", "karmadelay" -> cl.primeKarma(player)
+            "shieldsacrifice" -> cl.activateShieldSacrifice(player)
+            "shieldrecovery" -> cl.activateShieldRecovery(player)
+            "swordblock" -> cl.activateSwordBlock(player)
+            "bleedingedge", "bleed" -> cl.activateBleedingEdge(player)
+            "maceslam", "mace" -> cl.activateMaceSlam(player)
+            "hellcrush", "bosssacrifice" -> cl.activateHellcrush(player)
+            else -> player.sendMessage(Component.text("Unknown ability name. Use Tab to see your available unlocked abilities.", NamedTextColor.RED))
+        }
     }
 
     private fun handleEventHostCommand(sender: CommandSender, args: Array<out String>) {
@@ -187,6 +228,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             cl.honorInvisCooldowns.clear()
             cl.karmaCooldowns.clear()
             cl.activeKarma.clear()
+            cl.primedKarma.clear()
             cl.shieldSacrificeCooldowns.clear()
             cl.axeStaggerCooldowns.clear()
             player.sendMessage(Component.text("All ability cooldowns refreshed and active abilities terminated!", NamedTextColor.GREEN))
@@ -574,7 +616,6 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
 
             plugin.infamyManager.setReputation(sender, currentRep + amount)
 
-            // Withdraws as a SINGLE bulk bottle instead of filling inventory with +1s
             val bottle = plugin.itemManager.createHonorBottle(amount)
             val leftovers = sender.inventory.addItem(bottle)
             if (leftovers.isNotEmpty()) {
