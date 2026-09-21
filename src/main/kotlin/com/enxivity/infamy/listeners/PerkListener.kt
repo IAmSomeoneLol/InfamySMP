@@ -18,11 +18,18 @@ import org.bukkit.potion.PotionEffect
 
 class PerkListener(private val plugin: InfamySMP) : Listener {
 
-    @EventHandler
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = true)
     fun onPotionApply(event: EntityPotionEffectEvent) {
         val player = event.entity as? Player ?: return
         val effect = event.newEffect ?: return
-        if (event.cause == EntityPotionEffectEvent.Cause.PLUGIN) return
+
+        val isBottleOrSplash = event.cause == EntityPotionEffectEvent.Cause.POTION_DRINK ||
+                event.cause == EntityPotionEffectEvent.Cause.POTION_SPLASH ||
+                event.cause == EntityPotionEffectEvent.Cause.AREA_EFFECT_CLOUD
+
+        if (!isBottleOrSplash) return
+
+        if (effect.isInfinite || effect.duration == PotionEffect.INFINITE_DURATION || effect.duration < 0) return
 
         var modifier = 1.0
 
@@ -107,7 +114,6 @@ class PerkListener(private val plugin: InfamySMP) : Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     fun onEntityDeath(event: EntityDeathEvent) {
-        // FIXED: Exclude players completely so player drops / gear are never duplicated
         if (event.entity is Player) return
 
         val killer = event.entity.killer ?: return
@@ -159,8 +165,6 @@ class PerkListener(private val plugin: InfamySMP) : Listener {
                 }
             }
         }
-
-        // Double Mob drops (only runs on mobs now)
         if (plugin.eventManager.isDoubleDropsEnabled() && plugin.eventManager.isDropsAffectMobs()) {
             if (Math.random() <= plugin.eventManager.getDoubleDropsChance()) {
                 val mult = plugin.eventManager.getDoubleDropsMultiplier()

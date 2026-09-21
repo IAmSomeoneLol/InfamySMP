@@ -29,8 +29,6 @@ import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-
-// Dedicated holder so vanilla Ender Chests are NEVER affected
 class ECSnapshotHolder(val snapshotId: String, val ownerName: String) : InventoryHolder {
     private var inv: Inventory? = null
     fun setInventory(inventory: Inventory) { this.inv = inventory }
@@ -46,10 +44,9 @@ class InfamySMP : JavaPlugin(), Listener {
     lateinit var eventManager: EventManager
     lateinit var combatListener: CombatListener
     lateinit var itemRestrictionsListener: ItemRestrictionsListener
+    lateinit var messagesManager: MessagesManager
 
     val ecSnapshots = ConcurrentHashMap<String, ECSnapshot>()
-
-    // Tracks whether player's last hit was on a player (PvP = true, PvE/Mob = false)
     val pvpDebuffActive = mutableMapOf<UUID, Boolean>()
     lateinit var penaltyKey: NamespacedKey
 
@@ -65,6 +62,9 @@ class InfamySMP : JavaPlugin(), Listener {
         infamyManager = InfamyManager(this)
         teamManager = TeamManager(this)
         eventManager = EventManager(this)
+
+        messagesManager = MessagesManager(this)
+        messagesManager.loadConfig()
 
         infamyManager.loadData()
         teamManager.loadData()
@@ -86,6 +86,10 @@ class InfamySMP : JavaPlugin(), Listener {
         getCommand("infamy")?.setExecutor(infamyCmd)
         getCommand("infamy")?.setTabCompleter(infamyCmd)
 
+        val teamCmd = com.enxivity.infamy.commands.TeamCommand(this)
+        getCommand("team")?.setExecutor(teamCmd)
+        getCommand("team")?.setTabCompleter(teamCmd)
+
         registerElytraRecipe()
         registerShulkerBoxRecipe()
 
@@ -94,8 +98,6 @@ class InfamySMP : JavaPlugin(), Listener {
 
         val lastHeldItems = mutableMapOf<UUID, Material>()
         val lastHonorLevels = mutableMapOf<UUID, Int>()
-
-        // Scoreboard & Passives loop
         server.scheduler.runTaskTimer(this, Runnable {
             val showParticles = config.getBoolean("settings.show-ability-particles", true)
             val hcBaseReduction = config.getDouble("abilities-config.hellcrush.base-stat-reduction-percentage", 0.4)
@@ -324,8 +326,6 @@ class InfamySMP : JavaPlugin(), Listener {
                 }
             }
         }, 0L, 20L)
-
-        // Event scheduler
         var secondCounter = 0
         server.scheduler.runTaskTimer(this, Runnable {
             eventManager.tickSecond()
@@ -335,13 +335,9 @@ class InfamySMP : JavaPlugin(), Listener {
             }
         }, 0L, 20L)
     }
-
-    // Dynamically updates weapon cooldowns (Default vanilla for mobs, Slow cooldown for PvP)
     fun updateWeaponCooldownPenalty(player: Player) {
         val attackSpeedAttr = player.getAttribute(Attribute.ATTACK_SPEED) ?: return
         attackSpeedAttr.modifiers.find { it.key == penaltyKey }?.let { attackSpeedAttr.removeModifier(it) }
-
-        // Only apply penalty if the ability is unlocked AND the last hit was on a player
         if (infamyManager.hasAbility(player, "weapon_cooldowns", true) && pvpDebuffActive[player.uniqueId] == true) {
             val currentItem = player.inventory.itemInMainHand.type
             val swordPenalty = config.getDouble("abilities-config.weapon-fatigue.sword-penalty", -0.3)
@@ -485,7 +481,7 @@ class InfamySMP : JavaPlugin(), Listener {
             if (config.getBoolean("settings.fancy-chat", true)) {
                 val team = teamManager.getTeam(player.uniqueId)
                 val teamPrefix = if (team != null) {
-                    LegacyComponentSerializer.legacyAmpersand().deserialize(team.colorFormat + "[" + team.name + "]&r ")
+                    TeamColor.deserialize(team.colorFormat + "[" + team.name + "]&r ")
                 } else Component.empty()
 
                 val arrow = Component.text(" » ", NamedTextColor.DARK_GRAY)

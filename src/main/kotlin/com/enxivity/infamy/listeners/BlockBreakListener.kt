@@ -22,13 +22,9 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
 
     private val placedOresKey = NamespacedKey(plugin, "placed_ores")
     private val chunkCache = mutableMapOf<Long, MutableSet<Int>>()
-
-    // Chunk key helper
     private fun getChunkKey(chunk: Chunk): Long {
         return (chunk.x.toLong() shl 32) or (chunk.z.toLong() and 0xFFFFFFFFL)
     }
-
-    // Get cached ores
     private fun getPlacedSet(chunk: Chunk): MutableSet<Int> {
         val key = getChunkKey(chunk)
         return chunkCache.getOrPut(key) {
@@ -36,22 +32,16 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
             array.toMutableSet()
         }
     }
-
-    // Chunk unload clean
     @EventHandler
     fun onChunkUnload(event: ChunkUnloadEvent) {
         chunkCache.remove(getChunkKey(event.chunk))
     }
-
-    // Packed coord calculation
     private fun getPacked(block: Block): Int {
         val lx = block.x and 15
         val lz = block.z and 15
         val ly = block.y + 64
         return lx or (lz shl 4) or (ly shl 8)
     }
-
-    // Set placed ore
     private fun setPlacedOre(block: Block) {
         val chunk = block.chunk
         val set = getPlacedSet(chunk)
@@ -60,15 +50,11 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
             chunk.persistentDataContainer.set(placedOresKey, PersistentDataType.INTEGER_ARRAY, set.toIntArray())
         }
     }
-
-    // Check placed ore
     private fun isPlacedOre(block: Block): Boolean {
         val chunk = block.chunk
         val set = getPlacedSet(chunk)
         return set.contains(getPacked(block))
     }
-
-    // Remove placed ore
     private fun removePlacedOre(block: Block) {
         val chunk = block.chunk
         val set = getPlacedSet(chunk)
@@ -81,8 +67,6 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
             }
         }
     }
-
-    // Block place event
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onBlockPlace(event: BlockPlaceEvent) {
         val type = event.block.type
@@ -90,8 +74,6 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
             setPlacedOre(event.block)
         }
     }
-
-    // Block break event
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     fun onBlockBreak(event: BlockBreakEvent) {
         val player = event.player
@@ -99,11 +81,7 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
 
         val block = event.block
         val state = block.state
-
-        // Container safety check
         if (state is Container) return
-
-        // Bed safety check
         if (block.type.name.endsWith("_BED")) return
 
         val rep = plugin.infamyManager.getRawReputation(player)
@@ -116,8 +94,6 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
         if (isPlaced) removePlacedOre(block)
 
         val hasSilkTouch = tool.containsEnchantment(Enchantment.SILK_TOUCH)
-
-        // Silk touch bonus
         if (hasSilkTouch) {
             if (isOre && !isPlaced && plugin.infamyManager.hasAbility(player, "good_fortune", true)) {
                 if (Math.random() <= 0.5) {
@@ -132,8 +108,6 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
 
         val currentFortune = tool.getEnchantmentLevel(Enchantment.FORTUNE)
         var newFortune = currentFortune
-
-        // Fortune calculations
         if (plugin.infamyManager.hasAbility(player, "good_fortune", true)) {
             if (honor >= 12) newFortune += 3
             else if (honor >= 9) newFortune += 2
@@ -152,8 +126,6 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
 
         val oldDrops = block.getDrops(tool, player).toList()
         val newDrops = if (newFortune != currentFortune) block.getDrops(dummyTool, player).toList() else oldDrops
-
-        // Compare drop changes
         var dropsChanged = false
         if (oldDrops.size != newDrops.size) {
             dropsChanged = true
@@ -167,8 +139,6 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
         }
 
         var finalDrops = if (dropsChanged) newDrops else oldDrops
-
-        // Double Ore event
         if (isOre && !isPlaced && plugin.eventManager.isDoubleDropsEnabled() && plugin.eventManager.isDropsAffectOres()) {
             if (Math.random() <= plugin.eventManager.getDoubleDropsChance()) {
                 val mult = plugin.eventManager.getDoubleDropsMultiplier()
@@ -182,8 +152,6 @@ class BlockBreakListener(private val plugin: InfamySMP) : Listener {
                 }
             }
         }
-
-        // Smooth drop spawn
         if (dropsChanged) {
             event.isDropItems = false
             val centerLoc = block.location.add(0.5, 0.25, 0.5)

@@ -4,10 +4,8 @@ import com.enxivity.infamy.InfamySMP
 import com.enxivity.infamy.KillRecord
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
-import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Bukkit
 import org.bukkit.Sound
-import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.PlayerDeathEvent
@@ -27,7 +25,6 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
             plugin.combatListener.resyncEquipment(victim)
         }
 
-        // Reset PvP weapon cooldown fatigue on death so they respawn with default vanilla cooldowns
         if (plugin.pvpDebuffActive.remove(victim.uniqueId) == true) {
             plugin.updateWeaponCooldownPenalty(victim)
         }
@@ -55,7 +52,7 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
             droppedItem.isInvulnerable = true
 
             if (plugin.config.getBoolean("settings.boss-bottle-announce", true)) {
-                val msg = Component.text("The Most Infamous Player has fallen! Listen closely to the wind for its location...", NamedTextColor.DARK_RED, TextDecoration.BOLD)
+                val msg = plugin.messagesManager.getComponent("bottles.pure-dropped")
                 Bukkit.getOnlinePlayers().filter { plugin.infamyManager.getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(msg) }
             }
             if (plugin.config.getBoolean("settings.boss-bottle-sound", true)) {
@@ -85,8 +82,8 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
             if (plugin.teamManager.areTeammates(killer.uniqueId, victim.uniqueId)) {
                 if (plugin.config.getBoolean("settings.betrayal.enabled", true)) {
                     awardPoints = plugin.config.getInt("settings.betrayal.points", 5)
-                    killer.sendMessage(Component.text("You betrayed your teammate! Penalty bottle generated.", NamedTextColor.RED))
-                    Bukkit.broadcast(Component.text("${killer.name} has killed their teammate ${victim.name} in a cold betrayal!", NamedTextColor.RED))
+                    killer.sendMessage(plugin.messagesManager.getComponent("teams.betrayal-private"))
+                    Bukkit.broadcast(plugin.messagesManager.getComponent("teams.betrayal-broadcast", "killer" to killer.name, "victim" to victim.name))
                     Bukkit.getOnlinePlayers().forEach { it.playSound(it.location, Sound.ENTITY_ELDER_GUARDIAN_CURSE, 1.0f, 1.0f) }
 
                     if (plugin.config.getBoolean("settings.betrayal.better-alternative", true)) {
@@ -94,7 +91,7 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
                         if (teamName != null) {
                             plugin.teamManager.removePlayerHandleLeader(killer.uniqueId)
                             plugin.teamManager.banPlayerFromTeam(killer.uniqueId, teamName, 86400000L)
-                            killer.sendMessage(Component.text("You have been kicked from the team and banned for 24 hours for betrayal!", NamedTextColor.DARK_RED))
+                            killer.sendMessage(plugin.messagesManager.getComponent("teams.betrayal-banned"))
                         }
                     }
                 } else {
@@ -102,7 +99,6 @@ class DeathListener(private val plugin: InfamySMP) : Listener {
                 }
             }
 
-            // Double Infamy event
             if (awardPoints == 1 && plugin.eventManager.isDoubleInfamyEnabled()) {
                 if (Math.random() <= plugin.eventManager.getDoubleInfamyChance()) {
                     awardPoints += plugin.eventManager.getDoubleInfamyExtra()

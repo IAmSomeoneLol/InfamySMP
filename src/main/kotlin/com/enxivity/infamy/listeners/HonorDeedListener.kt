@@ -31,16 +31,12 @@ class HonorDeedListener(private val plugin: InfamySMP) : Listener {
     fun onRaidWin(event: RaidFinishEvent) {
         val winners = event.winners
         if (winners.isNotEmpty()) {
-            // Bad Omen Levels 4 and 5 drop 2 bottles, otherwise 1 bottle
-            val amount = if (event.raid.badOmenLevel >= 4) 2 else 1
+            val omenLevel = event.raid.badOmenLevel.coerceAtLeast(1)
 
             for (winner in winners) {
-                for (i in 1..amount) {
-                    val bottle = plugin.itemManager.createHonorBottle()
-                    // Adds directly to their inventory. Any items that couldn't fit are spilled naturally at their feet.
-                    winner.inventory.addItem(bottle).values.forEach { leftovers ->
-                        winner.world.dropItemNaturally(winner.location, leftovers)
-                    }
+                val bottle = plugin.itemManager.createHonorBottle(omenLevel)
+                winner.inventory.addItem(bottle).values.forEach { leftovers ->
+                    winner.world.dropItemNaturally(winner.location, leftovers)
                 }
             }
         }

@@ -86,8 +86,6 @@ class TeamManager(private val plugin: InfamySMP) {
             }
         }
     }
-
-    // Rename (Disallows & and §)
     fun renameTeam(leader: Player, newName: String): Boolean {
         if (newName.contains("&") || newName.contains("§")) return false
         val oldKey = playerTeams[leader.uniqueId] ?: return false
@@ -111,7 +109,7 @@ class TeamManager(private val plugin: InfamySMP) {
             playerTeams[it] = newKey
         }
 
-        broadcastToTeam(newKey, "Team has been renamed to $newName!", NamedTextColor.GREEN)
+        broadcastComponentToTeam(newKey, plugin.messagesManager.getComponent("teams.renamed", "team" to newName))
         syncAllScoreboards()
         return true
     }
@@ -126,7 +124,7 @@ class TeamManager(private val plugin: InfamySMP) {
         val team = teams[teamName] ?: return false
         if (team.leader != leader.uniqueId || target == leader.uniqueId || !team.members.contains(target)) return false
         team.officers.add(target)
-        broadcastToTeam(teamName, "${Bukkit.getOfflinePlayer(target).name} has been promoted to Team Officer!", NamedTextColor.GOLD)
+        broadcastComponentToTeam(teamName, plugin.messagesManager.getComponent("teams.member-promoted", "player" to (Bukkit.getOfflinePlayer(target).name ?: "Unknown")))
         return true
     }
 
@@ -135,7 +133,7 @@ class TeamManager(private val plugin: InfamySMP) {
         val team = teams[teamName] ?: return false
         if (team.leader != leader.uniqueId || target == leader.uniqueId || !team.officers.contains(target)) return false
         team.officers.remove(target)
-        broadcastToTeam(teamName, "${Bukkit.getOfflinePlayer(target).name} has been demoted from Team Officer.", NamedTextColor.YELLOW)
+        broadcastComponentToTeam(teamName, plugin.messagesManager.getComponent("teams.member-demoted", "player" to (Bukkit.getOfflinePlayer(target).name ?: "Unknown")))
         return true
     }
 
@@ -163,8 +161,6 @@ class TeamManager(private val plugin: InfamySMP) {
         val minutes = (remaining / (1000 * 60)) % 60
         return "${hours}h ${minutes}m"
     }
-
-    // Broadcast system messages
     fun broadcastToTeam(teamName: String, message: String, color: NamedTextColor) {
         val team = teams[teamName.lowercase()] ?: return
         team.members.forEach { memberId ->
@@ -182,11 +178,8 @@ class TeamManager(private val plugin: InfamySMP) {
             }
         }
     }
-
-    // Send team chat with interactive components & formatting
     fun sendTeamChat(team: TeamData, sender: Player, rawMessage: String) {
-        val colorCode = Regex("&([0-9a-fA-F])").find(team.colorFormat)?.value ?: "&b"
-        val teamColor = LegacyComponentSerializer.legacyAmpersand().deserialize(colorCode).color() ?: NamedTextColor.AQUA
+        val teamColor = TeamColor.parseColor(team.colorFormat)
 
         val processedMessage = plugin.buildChatComponent(sender, rawMessage, teamColor)
 
@@ -215,11 +208,9 @@ class TeamManager(private val plugin: InfamySMP) {
             teams.values.forEach { team ->
                 val sbTeamName = "inf_${team.name}".take(16)
                 val sbTeam = board.registerNewTeam(sbTeamName)
-
-                // Scoreboard
                 sbTeam.setCanSeeFriendlyInvisibles(true)
 
-                val formatComp = LegacyComponentSerializer.legacyAmpersand().deserialize(team.colorFormat)
+                val formatComp = TeamColor.deserialize(team.colorFormat)
                 sbTeam.prefix(formatComp)
 
                 team.members.forEach { memberId ->
@@ -252,12 +243,10 @@ class TeamManager(private val plugin: InfamySMP) {
                 .first().uniqueId
 
             team.leader = nextLeader
-            broadcastToTeam(teamName, "${Bukkit.getOfflinePlayer(nextLeader).name} has inherited team leadership!", NamedTextColor.GOLD)
+            broadcastComponentToTeam(teamName, plugin.messagesManager.getComponent("teams.leader-inherited", "player" to (Bukkit.getOfflinePlayer(nextLeader).name ?: "Unknown")))
         }
         syncAllScoreboards()
     }
-
-    // Disallows & and § in team name
     fun createTeam(leader: Player, teamName: String): Boolean {
         if (teamName.contains("&") || teamName.contains("§")) return false
         if (playerTeams.containsKey(leader.uniqueId)) return false
@@ -275,7 +264,7 @@ class TeamManager(private val plugin: InfamySMP) {
         val teamName = playerTeams[leader.uniqueId] ?: return false
         val team = teams[teamName] ?: return false
         if (team.leader != leader.uniqueId) return false
-        broadcastToTeam(teamName, "The team '$teamName' has been disbanded by the leader.", NamedTextColor.RED)
+        broadcastComponentToTeam(teamName, plugin.messagesManager.getComponent("teams.disbanded-broadcast", "team" to teamName))
 
         val onlineMembers = team.members.mapNotNull { Bukkit.getPlayer(it) }
         team.members.forEach {
@@ -306,7 +295,7 @@ class TeamManager(private val plugin: InfamySMP) {
         val team = teams[teamName] ?: return false
         team.members.add(target.uniqueId)
         playerTeams[target.uniqueId] = teamName
-        broadcastToTeam(teamName, "${target.name} joined the team!", NamedTextColor.GREEN)
+        broadcastComponentToTeam(teamName, plugin.messagesManager.getComponent("teams.member-joined", "player" to target.name))
         plugin.infamyManager.updateTabList(target)
         syncAllScoreboards()
         return true
@@ -322,7 +311,7 @@ class TeamManager(private val plugin: InfamySMP) {
             return false
         }
         removePlayerHandleLeader(player.uniqueId)
-        broadcastToTeam(teamName, "${player.name} left the team.", NamedTextColor.YELLOW)
+        broadcastComponentToTeam(teamName, plugin.messagesManager.getComponent("teams.left", "player" to player.name))
         return true
     }
 
@@ -330,14 +319,12 @@ class TeamManager(private val plugin: InfamySMP) {
         val teamName = playerTeams[leader.uniqueId] ?: return false
         val team = teams[teamName] ?: return false
         if (!isOfficerOrLeader(leader.uniqueId, teamName) || target == leader.uniqueId || !team.members.contains(target)) return false
-
-        // Checks
         if (team.leader != leader.uniqueId && (team.leader == target || team.officers.contains(target))) {
             return false
         }
 
         removePlayerHandleLeader(target)
-        broadcastToTeam(teamName, "${Bukkit.getOfflinePlayer(target).name} was kicked from the team.", NamedTextColor.YELLOW)
+        broadcastComponentToTeam(teamName, plugin.messagesManager.getComponent("teams.member-kicked", "player" to (Bukkit.getOfflinePlayer(target).name ?: "Unknown")))
         return true
     }
 

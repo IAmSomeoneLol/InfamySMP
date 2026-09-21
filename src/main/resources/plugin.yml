@@ -12,15 +12,11 @@ commands:
   infamy:
     description: Master command for the Infamy SMP system.
     aliases: [inf]
-    usage: |
-      Incorrect usage! Available commands:
-      /infamy info
-      /infamy team [create|invite|accept|decline|leave|kick|list]
-      /infamy level [player] [reset]
-      /infamy withdraw <amount>
-      /infamy history [admin]
-      /infamy add <player> <honor|infamy> <amount>
-      /infamy pureinfamybottle <player>
+    usage: /infamy <subcommand>
+  team:
+    description: Manage your team.
+    aliases: [teams, t]
+    usage: /team <create|invite|accept|decline|leave|kick|list|color|coords|chat>
 
 permissions:
   infamysmp.admin:

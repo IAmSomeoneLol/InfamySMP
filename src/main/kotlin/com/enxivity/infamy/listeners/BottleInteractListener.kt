@@ -1,8 +1,6 @@
 package com.enxivity.infamy.listeners
 
 import com.enxivity.infamy.InfamySMP
-import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Sound
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -120,7 +118,7 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
             val maxAllowed = if (isLocked) 20 else 21
 
             if (currentRep >= maxAllowed) {
-                player.sendMessage(Component.text("You have reached the maximum allowed level!", NamedTextColor.RED))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.max-level-reached"))
                 return
             }
 
@@ -132,15 +130,15 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                 val leftovers = player.inventory.addItem(refundBottle)
                 if (leftovers.isNotEmpty()) {
                     leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
-                    player.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
+                    player.sendMessage(plugin.messagesManager.getComponent("bottles.inventory-full-refund"))
                 }
-                player.sendMessage(Component.text("Infamy neutralized your Honor! $refundAmount Honor point(s) refunded to prevent item destruction.", NamedTextColor.YELLOW))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.infamy-neutralized", "amount" to refundAmount))
             }
 
             if (targetRep > maxAllowed) {
                 val refundAmount = targetRep - maxAllowed
                 plugin.infamyManager.setReputation(player, maxAllowed)
-                player.sendMessage(Component.text("You hit the level cap! Refunded $refundAmount point(s).", NamedTextColor.YELLOW))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.level-cap-refund", "amount" to refundAmount))
 
                 val origName = pdc.get(plugin.itemManager.ownerNameKey, PersistentDataType.STRING)
                 val origUUID = pdc.get(plugin.itemManager.ownerUuidKey, PersistentDataType.STRING)
@@ -150,11 +148,11 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                 val leftovers = player.inventory.addItem(refundBottle)
                 if (leftovers.isNotEmpty()) {
                     leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
-                    player.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
+                    player.sendMessage(plugin.messagesManager.getComponent("bottles.inventory-full-refund"))
                 }
             } else {
                 plugin.infamyManager.setReputation(player, targetRep)
-                player.sendMessage(Component.text("You consumed an Infamy Bottle!", NamedTextColor.GREEN))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.infamy-consumed"))
             }
 
             markConsumed(player)
@@ -170,14 +168,14 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
             event.isCancelled = true
 
             if (currentRep >= 21) {
-                player.sendMessage(Component.text("You cannot consume Honor Bottles while holding the Most Infamous title! Withdraw your pure bottle or die to lose it first.", NamedTextColor.RED))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.honor-blocked-by-boss"))
                 return
             }
 
             val points = pdc.get(plugin.itemManager.honorKey, PersistentDataType.INTEGER) ?: 1
 
             if (currentRep <= -21) {
-                player.sendMessage(Component.text("You have reached the maximum allowed level!", NamedTextColor.RED))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.max-level-reached"))
                 return
             }
 
@@ -188,9 +186,9 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                 val leftovers = player.inventory.addItem(refundBottle)
                 if (leftovers.isNotEmpty()) {
                     leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
-                    player.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
+                    player.sendMessage(plugin.messagesManager.getComponent("bottles.inventory-full-refund"))
                 }
-                player.sendMessage(Component.text("Honor neutralized your Infamy! $neutralized Infamy Bottle(s) refunded to prevent item destruction.", NamedTextColor.YELLOW))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.honor-neutralized", "amount" to neutralized))
             }
 
             val targetRep = currentRep - points
@@ -198,30 +196,41 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                 val applied = (-21 - currentRep).let { if (it < 0) -it else 0 }
                 val refundAmount = points - applied
                 plugin.infamyManager.setReputation(player, -21)
-                player.sendMessage(Component.text("You hit the level cap! Refunded $refundAmount point(s).", NamedTextColor.YELLOW))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.level-cap-refund", "amount" to refundAmount))
 
                 val refundBottle = plugin.itemManager.createHonorBottle(refundAmount)
                 val leftovers = player.inventory.addItem(refundBottle)
                 if (leftovers.isNotEmpty()) {
                     leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
-                    player.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
+                    player.sendMessage(plugin.messagesManager.getComponent("bottles.inventory-full-refund"))
                 }
             } else {
                 plugin.infamyManager.setReputation(player, targetRep)
-                player.sendMessage(Component.text("You consumed an Honor Bottle!", NamedTextColor.AQUA))
+                // Reads your custom message ending with '.' from messagesconfig.yml
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.honor-consumed"))
             }
 
+            markConsumed(player)
             plugin.server.scheduler.runTask(plugin, Runnable { player.inventory.getItem(event.hand)?.subtract(1) })
             spawnConsumptionBeacon(player.location, "honor")
             return
         }
 
+        // =======================
+        // CONSUMING PURE INFAMY BOTTLE
+        // =======================
         if (pdc.has(plugin.itemManager.bossKey, PersistentDataType.INTEGER)) {
             event.isCancelled = true
-            if (currentRep != 20) return player.sendMessage(Component.text("Only a Level 20 player can consume the Pure Infamy Bottle!", NamedTextColor.RED))
+            if (currentRep != 20) {
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.pure-not-lvl20"))
+                return
+            }
 
             val isLocked = plugin.infamyManager.currentBoss != null && !plugin.infamyManager.forceUnlock21
-            if (isLocked) return player.sendMessage(Component.text("The title of Most Infamous is currently locked!", NamedTextColor.RED))
+            if (isLocked) {
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.pure-locked"))
+                return
+            }
 
             plugin.infamyManager.setReputation(player, 21)
 

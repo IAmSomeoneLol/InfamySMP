@@ -4,24 +4,28 @@ package com.enxivity.infamy.listeners
 import com.enxivity.infamy.InfamySMP
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Particle
-import org.bukkit.Registry
 import org.bukkit.Sound
 import org.bukkit.enchantments.Enchantment
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
+import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerItemHeldEvent
+import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 import org.bukkit.scheduler.BukkitRunnable
+import org.bukkit.util.Vector
 import java.util.UUID
 
 data class KarmaSession(val attackerId: UUID, var accumulatedDamage: Double)
@@ -63,10 +67,12 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
     val karmaCooldowns = mutableMapOf<UUID, Long>()
     val activeKarma = mutableMapOf<UUID, KarmaSession>()
-    val primedKarma = mutableMapOf<UUID, Long>() // Primed via command
+    val primedKarma = mutableMapOf<UUID, Long>()
 
     val shieldSacrificeCooldowns = mutableMapOf<UUID, Long>()
     val axeStaggerCooldowns = mutableMapOf<UUID, Long>()
+
+    val staggeredPlayers = mutableMapOf<UUID, Long>()
 
     fun cleanExpiredCooldowns() {
         val now = System.currentTimeMillis()
@@ -83,21 +89,22 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         shieldSacrificeCooldowns.entries.removeIf { now - it.value > 600000L }
         axeStaggerCooldowns.entries.removeIf { now - it.value > 90000L }
         primedKarma.entries.removeIf { now - it.value > 30000L }
+        staggeredPlayers.entries.removeIf { now >= it.value }
     }
 
-    private fun msg(player: Player, text: String, color: NamedTextColor) {
+    private fun msg(player: Player, component: Component) {
         val settings = plugin.infamyManager.getSettings(player.uniqueId)
         if (settings.abilityMessages) {
-            if (settings.abilityMessagesInChat) player.sendMessage(Component.text(text, color))
-            else player.sendActionBar(Component.text(text, color))
+            if (settings.abilityMessagesInChat) player.sendMessage(component)
+            else player.sendActionBar(component)
         }
     }
 
-    private fun msgCD(player: Player, text: String, color: NamedTextColor) {
+    private fun msgCD(player: Player, component: Component) {
         val settings = plugin.infamyManager.getSettings(player.uniqueId)
         if (settings.cooldownMessages) {
-            if (settings.abilityMessagesInChat) player.sendMessage(Component.text(text, color))
-            else player.sendActionBar(Component.text(text, color))
+            if (settings.abilityMessagesInChat) player.sendMessage(component)
+            else player.sendActionBar(component)
         }
     }
 
@@ -154,6 +161,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         activeBleedCharge.remove(uuid)
         activeKarma.remove(uuid)
         primedKarma.remove(uuid)
+        staggeredPlayers.remove(uuid)
         plugin.pvpDebuffActive.remove(uuid)
     }
 
@@ -165,9 +173,14 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
     }
 
     @EventHandler
-    fun onHotbarSwitch(event: org.bukkit.event.player.PlayerItemHeldEvent) {
+    fun onHotbarSwitch(event: PlayerItemHeldEvent) {
         if (activeTrueInvis.contains(event.player.uniqueId)) {
             plugin.server.scheduler.runTask(plugin, Runnable { if (event.player.isOnline) forceHideEquipment(event.player) })
+        }
+        if (plugin.pvpDebuffActive[event.player.uniqueId] == true) {
+            plugin.server.scheduler.runTask(plugin, Runnable {
+                if (event.player.isOnline) plugin.updateWeaponCooldownPenalty(event.player)
+            })
         }
     }
 
@@ -179,21 +192,34 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         }
     }
 
-    // ==========================================
-    // MANUAL ABILITY ACTIVATION METHODS
-    // ==========================================
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onStaggerMove(event: PlayerMoveEvent) {
+        val player = event.player
+        val expire = staggeredPlayers[player.uniqueId] ?: return
+        val now = System.currentTimeMillis()
+
+        if (now < expire) {
+            val from = event.from
+            val to = event.to
+            if (from.x != to.x || from.y != to.y || from.z != to.z) {
+                event.to = Location(from.world, from.x, from.y, from.z, to.yaw, to.pitch)
+            }
+        } else {
+            staggeredPlayers.remove(player.uniqueId)
+        }
+    }
 
     fun activateAbility(player: Player, rawName: String): Boolean {
         val name = rawName.lowercase().replace("_", "").replace(" ", "")
         return when (name) {
-            "trueinvisibility", "invisibility" -> activateTrueInvisibility(player)
+            "trueinvisibility", "invisibility", "trueinvis", "invis" -> activateTrueInvisibility(player)
             "maceslam", "mace", "slam" -> activateMaceSlam(player)
             "swordblock", "parry" -> activateSwordBlock(player)
             "bleedingedge", "bleed" -> activateBleedingEdge(player)
             "karmicjustice", "karma", "karmadelay" -> primeKarma(player)
             "shieldsacrifice", "sacrifice" -> activateShieldSacrifice(player)
             "shieldrecovery", "recovery" -> activateShieldRecovery(player)
-            "saturatingshield", "hungerabsorption", "absorb" -> activateSaturatingShield(player)
+            "saturatingshield", "hungerabsorption", "absorb", "satshield" -> activateSaturatingShield(player)
             "hellcrush", "bosssacrifice" -> activateHellcrush(player)
             else -> {
                 player.sendMessage(Component.text("Unknown ability: $rawName. Available: TrueInvisibility, MaceSlam, SwordBlock, BleedingEdge, KarmicJustice, ShieldSacrifice, ShieldRecovery, SaturatingShield, Hellcrush", NamedTextColor.RED))
@@ -204,7 +230,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
     fun activateSaturatingShield(player: Player): Boolean {
         if (!plugin.infamyManager.hasAbility(player, "hunger_absorption", true)) {
-            player.sendMessage(Component.text("You have not unlocked Saturating Shield!", NamedTextColor.RED))
+            player.sendMessage(plugin.messagesManager.getComponent("abilities.not-unlocked", "ability" to "Saturating Shield"))
             return false
         }
         val now = System.currentTimeMillis()
@@ -229,7 +255,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                     }
                 }, 3L)
 
-                msg(player, "Hunger converted to Absorption!", NamedTextColor.AQUA)
+                msg(player, plugin.messagesManager.getComponent("abilities.hunger-converted"))
                 player.world.playSound(player.location, Sound.ENTITY_ILLUSIONER_CAST_SPELL, 1f, 1.2f)
 
                 try {
@@ -239,18 +265,18 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 }
                 return true
             } else {
-                msg(player, "You have no hunger to consume!", NamedTextColor.RED)
+                msg(player, plugin.messagesManager.getComponent("abilities.no-hunger"))
                 return false
             }
         } else {
-            msgCD(player, "Absorption conversion on CD! (${(cdMs - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            msgCD(player, plugin.messagesManager.getComponent("abilities.cooldown-msg", "ability" to "Absorption conversion", "time" to "${(cdMs - (now - lastUsed))/1000}s"))
             return false
         }
     }
 
     fun activateTrueInvisibility(player: Player): Boolean {
         if (!plugin.infamyManager.hasAbility(player, "true_invisibility", true)) {
-            player.sendMessage(Component.text("You have not unlocked True Invisibility!", NamedTextColor.RED))
+            player.sendMessage(plugin.messagesManager.getComponent("abilities.not-unlocked", "ability" to "True Invisibility"))
             return false
         }
         val now = System.currentTimeMillis()
@@ -266,7 +292,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             activeTrueInvis.add(player.uniqueId)
             forceHideEquipment(player)
 
-            msg(player, "True Invisibility activated for ${durSecs}s!", NamedTextColor.AQUA)
+            msg(player, plugin.messagesManager.getComponent("abilities.true-invis-activated", "duration" to durSecs))
 
             object : BukkitRunnable() {
                 var ticks = 0
@@ -274,7 +300,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                     if (!player.isOnline || player.isDead || ticks >= (durSecs * 20)) {
                         if (player.isOnline) {
                             resyncEquipment(player)
-                            msg(player, "True Invisibility faded. Equipment visible.", NamedTextColor.GRAY)
+                            msg(player, plugin.messagesManager.getComponent("abilities.true-invis-faded"))
                         } else {
                             activeTrueInvis.remove(player.uniqueId)
                         }
@@ -287,14 +313,14 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             }.runTaskTimer(plugin, 0L, 5L)
             return true
         } else {
-            msgCD(player, "True Invisibility on CD! (${(cdMs - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            msgCD(player, plugin.messagesManager.getComponent("abilities.cooldown-msg", "ability" to "True Invisibility", "time" to "${(cdMs - (now - lastUsed))/1000}s"))
             return false
         }
     }
 
     fun primeKarma(player: Player): Boolean {
         if (!plugin.infamyManager.hasAbility(player, "karma_delay", true)) {
-            player.sendMessage(Component.text("You have not unlocked Karmic Justice!", NamedTextColor.RED))
+            player.sendMessage(plugin.messagesManager.getComponent("abilities.not-unlocked", "ability" to "Karmic Justice"))
             return false
         }
         val now = System.currentTimeMillis()
@@ -303,18 +329,18 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
         if (now - lastUsed > cdMs) {
             primedKarma[player.uniqueId] = now
-            msg(player, "Karmic Justice primed! Your next hit will apply delayed karma.", NamedTextColor.AQUA)
+            msg(player, plugin.messagesManager.getComponent("abilities.karma-primed"))
             player.world.playSound(player.location, Sound.BLOCK_BEACON_ACTIVATE, 1.0f, 1.5f)
             return true
         } else {
-            msgCD(player, "Karmic Justice on CD! (${(cdMs - (now - lastUsed)) / 1000}s)", NamedTextColor.RED)
+            msgCD(player, plugin.messagesManager.getComponent("abilities.cooldown-msg", "ability" to "Karmic Justice", "time" to "${(cdMs - (now - lastUsed)) / 1000}s"))
             return false
         }
     }
 
     fun activateShieldSacrifice(player: Player): Boolean {
         if (!plugin.infamyManager.hasAbility(player, "shield_sacrifice", false)) {
-            player.sendMessage(Component.text("You have not unlocked Shield Sacrifice!", NamedTextColor.RED))
+            player.sendMessage(plugin.messagesManager.getComponent("abilities.not-unlocked", "ability" to "Shield Sacrifice"))
             return false
         }
         val now = System.currentTimeMillis()
@@ -331,21 +357,21 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             player.world.spawnParticle(Particle.LAVA, player.location.add(0.0, 1.0, 0.0), 10, 0.3, 0.5, 0.3, 0.0)
 
             val durStr = if (durSecs >= 60) "${durSecs / 60} minutes" else "${durSecs} seconds"
-            msg(player, "Shield Sacrificed! You gained Resistance for $durStr.", NamedTextColor.DARK_RED)
+            msg(player, plugin.messagesManager.getComponent("abilities.shield-sacrificed", "duration" to durStr))
             return true
         } else {
-            msgCD(player, "Shield Sacrifice on CD! (${(cdMs - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            msgCD(player, plugin.messagesManager.getComponent("abilities.cooldown-msg", "ability" to "Shield Sacrifice", "time" to "${(cdMs - (now - lastUsed))/1000}s"))
             return false
         }
     }
 
     fun activateShieldRecovery(player: Player): Boolean {
         if (!plugin.infamyManager.hasAbility(player, "shield_recovery", false)) {
-            player.sendMessage(Component.text("You have not unlocked Shield Recovery!", NamedTextColor.RED))
+            player.sendMessage(plugin.messagesManager.getComponent("abilities.not-unlocked", "ability" to "Shield Recovery"))
             return false
         }
         if (!player.hasCooldown(Material.SHIELD)) {
-            player.sendMessage(Component.text("Your shield is not on cooldown!", NamedTextColor.RED))
+            player.sendMessage(plugin.messagesManager.getComponent("abilities.shield-not-on-cooldown"))
             return false
         }
         val now = System.currentTimeMillis()
@@ -358,18 +384,18 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             player.setCooldown(Material.SHIELD, 0)
             player.health = (player.health - hCost).coerceAtLeast(0.0)
 
-            msg(player, "Shield recovered instantly! (-${hCost/2} Hearts)", NamedTextColor.GREEN)
+            msg(player, plugin.messagesManager.getComponent("abilities.shield-recovered", "hearts" to (hCost / 2)))
             player.world.playSound(player.location, Sound.ITEM_SHIELD_BLOCK, 1f, 1.5f)
             return true
         } else {
-            msgCD(player, "Shield Recovery on cooldown! (${((cdSecs * 1000L) - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            msgCD(player, plugin.messagesManager.getComponent("abilities.cooldown-msg", "ability" to "Shield Recovery", "time" to "${((cdSecs * 1000L) - (now - lastUsed))/1000}s"))
             return false
         }
     }
 
     fun activateSwordBlock(player: Player): Boolean {
         if (!plugin.infamyManager.hasAbility(player, "sword_block", false)) {
-            player.sendMessage(Component.text("You have not unlocked Sword Block!", NamedTextColor.RED))
+            player.sendMessage(plugin.messagesManager.getComponent("abilities.not-unlocked", "ability" to "Sword Block"))
             return false
         }
         val now = System.currentTimeMillis()
@@ -380,18 +406,18 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         if (now - lastUsed > cdSecs * 1000L) {
             swordBlockCooldowns[player.uniqueId] = now
             swordBlockActiveUntil[player.uniqueId] = now + (durSecs * 1000L)
-            msg(player, "Sword Block armed! Guard active for ${durSecs}s.", NamedTextColor.GREEN)
+            msg(player, plugin.messagesManager.getComponent("abilities.sword-block-armed", "duration" to durSecs))
             player.world.playSound(player.location, Sound.ITEM_SHIELD_BLOCK, 1f, 1.2f)
             return true
         } else {
-            msgCD(player, "Sword Block on CD! (${(cdSecs * 1000L - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            msgCD(player, plugin.messagesManager.getComponent("abilities.cooldown-msg", "ability" to "Sword Block", "time" to "${(cdSecs * 1000L - (now - lastUsed))/1000}s"))
             return false
         }
     }
 
     fun activateBleedingEdge(player: Player): Boolean {
         if (!plugin.infamyManager.hasAbility(player, "bleeding_edge", false)) {
-            player.sendMessage(Component.text("You have not unlocked Bleeding Edge!", NamedTextColor.RED))
+            player.sendMessage(plugin.messagesManager.getComponent("abilities.not-unlocked", "ability" to "Bleeding Edge"))
             return false
         }
         val now = System.currentTimeMillis()
@@ -402,7 +428,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         if (now - lastUsed > cdSecs * 1000L) {
             bleedCooldowns[player.uniqueId] = now
             activeBleedCharge[player.uniqueId] = now
-            msg(player, "Bleeding Edge primed! Your next strike will inflict bleeding.", NamedTextColor.DARK_RED)
+            msg(player, plugin.messagesManager.getComponent("abilities.bleeding-edge-primed"))
             player.world.playSound(player.location, Sound.ITEM_ARMOR_EQUIP_IRON, 1f, 0.5f)
 
             val showParticles = plugin.config.getBoolean("settings.show-ability-particles", true)
@@ -424,27 +450,19 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             plugin.server.scheduler.runTaskLater(plugin, Runnable {
                 if (activeBleedCharge.containsKey(player.uniqueId)) {
                     activeBleedCharge.remove(player.uniqueId)
-                    msg(player, "Bleeding Edge charge dissipated.", NamedTextColor.GRAY)
+                    msg(player, plugin.messagesManager.getComponent("abilities.bleeding-edge-dissipated"))
                 }
             }, timeoutSecs * 20L)
             return true
         } else {
-            msgCD(player, "Bleeding Edge on CD! (${(cdSecs * 1000L - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            msgCD(player, plugin.messagesManager.getComponent("abilities.cooldown-msg", "ability" to "Bleeding Edge", "time" to "${(cdSecs * 1000L - (now - lastUsed))/1000}s"))
             return false
         }
     }
 
     fun activateMaceSlam(player: Player): Boolean {
-        // Mace slam can only work if you hold a mace
-        val mainHand = player.inventory.itemInMainHand
-        val offHand = player.inventory.itemInOffHand
-        if (mainHand.type != Material.MACE && offHand.type != Material.MACE) {
-            player.sendMessage(Component.text("You must be holding a Mace to use Mace Slam!", NamedTextColor.RED))
-            return false
-        }
-
         if (!plugin.infamyManager.hasAbility(player, "mace_slam", false)) {
-            player.sendMessage(Component.text("You have not unlocked Mace Slam!", NamedTextColor.RED))
+            player.sendMessage(plugin.messagesManager.getComponent("abilities.not-unlocked", "ability" to "Mace Slam"))
             return false
         }
         val now = System.currentTimeMillis()
@@ -453,42 +471,65 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
         if (now - lastUsed > cdSecs * 1000L) {
             maceCooldowns[player.uniqueId] = now
-            val startHeight = player.location.y
-            player.velocity = player.location.direction.multiply(1.5).setY(1.4)
+
+            val fwdVel = plugin.config.getDouble("abilities-config.mace-slam.forward-velocity", 1.5)
+            val upVel = plugin.config.getDouble("abilities-config.mace-slam.upward-velocity", 1.4)
+            player.velocity = player.location.direction.multiply(fwdVel).setY(upVel)
             player.world.playSound(player.location, Sound.ENTITY_ENDER_DRAGON_FLAP, 1.2f, 0.8f)
 
-            msg(player, "Mace Slam activated! Crashing down...", NamedTextColor.DARK_RED)
+            msg(player, plugin.messagesManager.getComponent("abilities.mace-slam-activated"))
             maceActivePlayers.add(player.uniqueId)
 
             val showParticles = plugin.config.getBoolean("settings.show-ability-particles", true)
 
             object : BukkitRunnable() {
+                var peakY = player.location.y
+                var launched = false
+                var ticksInAir = 0
+
                 override fun run() {
                     if (player.isDead || !player.isOnline) {
                         maceActivePlayers.remove(player.uniqueId)
                         cancel()
                         return
                     }
+
+                    ticksInAir++
+                    if (player.location.y > peakY) {
+                        peakY = player.location.y
+                    }
+                    if (player.velocity.y > 0.1) {
+                        launched = true
+                    }
+
                     if (showParticles) {
                         player.world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, player.location.add(0.0, 1.0, 0.0), 5, 0.2, 0.2, 0.2, 0.02)
                     }
-                    if (player.velocity.y <= 0.0 && (player.isOnGround || player.location.subtract(0.0, 0.1, 0.0).block.type.isSolid)) {
-                        createMaceShockwave(player, startHeight, showParticles)
-                        maceActivePlayers.remove(player.uniqueId)
+
+                    val hasDownwardMotion = player.velocity.y <= 0.0
+                    val hitGround = player.isOnGround || player.location.subtract(0.0, 0.1, 0.0).block.type.isSolid
+
+                    if (hasDownwardMotion && hitGround && (launched || ticksInAir >= 5)) {
+                        createMaceShockwave(player, peakY, showParticles)
+
+                        plugin.server.scheduler.runTaskLater(plugin, Runnable {
+                            maceActivePlayers.remove(player.uniqueId)
+                        }, 10L)
+
                         cancel()
                     }
                 }
             }.runTaskTimer(plugin, 1L, 1L)
             return true
         } else {
-            msgCD(player, "Mace Slam on CD! (${(cdSecs * 1000L - (now - lastUsed))/1000}s)", NamedTextColor.RED)
+            msgCD(player, plugin.messagesManager.getComponent("abilities.cooldown-msg", "ability" to "Mace Slam", "time" to "${(cdSecs * 1000L - (now - lastUsed))/1000}s"))
             return false
         }
     }
 
     fun activateHellcrush(player: Player): Boolean {
         if (!plugin.infamyManager.hasAbility(player, "boss_sacrifice", false)) {
-            player.sendMessage(Component.text("You have not unlocked Hellcrush!", NamedTextColor.RED))
+            player.sendMessage(plugin.messagesManager.getComponent("abilities.not-unlocked", "ability" to "Hellcrush"))
             return false
         }
         val now = System.currentTimeMillis()
@@ -500,7 +541,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             sacrificeCooldowns[player.uniqueId] = now
             activeSacrifices.add(player.uniqueId)
 
-            msg(player, "Hellcrush activated, Helmet is now Defective", NamedTextColor.DARK_RED)
+            msg(player, plugin.messagesManager.getComponent("abilities.hellcrush-activated"))
             player.world.playSound(player.location, Sound.ENTITY_ITEM_BREAK, 1.2f, 0.7f)
 
             plugin.server.scheduler.runTaskLater(plugin, Runnable {
@@ -508,20 +549,16 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                     activeSacrifices.remove(player.uniqueId)
                     if (player.isOnline) {
                         restoreHelmet(player)
-                        msg(player, "Your Hellcrush fury has faded. Helmet is no longer defective.", NamedTextColor.GRAY)
+                        msg(player, plugin.messagesManager.getComponent("abilities.hellcrush-faded"))
                     }
                 }
             }, durSecs * 20L)
             return true
         } else {
-            msgCD(player, "Hellcrush is on cooldown! (${((cdSecs * 1000L) - (now - lastUsed)) / 1000 / 60} mins left)", NamedTextColor.RED)
+            msgCD(player, plugin.messagesManager.getComponent("abilities.cooldown-msg", "ability" to "Hellcrush", "time" to "${((cdSecs * 1000L) - (now - lastUsed)) / 1000 / 60} mins"))
             return false
         }
     }
-
-    // ==========================================
-    // ACTION-BASED ACTIVATION LISTENERS
-    // ==========================================
 
     @EventHandler
     fun onSwapHand(event: org.bukkit.event.player.PlayerSwapHandItemsEvent) {
@@ -531,7 +568,6 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
             plugin.server.scheduler.runTask(plugin, Runnable { if (player.isOnline) forceHideEquipment(player) })
         }
 
-        // Checks if action-based activations are enabled in player settings
         if (!plugin.infamyManager.getSettings(player.uniqueId).actionActivation) return
 
         if (player.isSneaking && event.mainHandItem.type.isAir && plugin.infamyManager.hasAbility(player, "hunger_absorption", true)) {
@@ -559,7 +595,6 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         val isLeftClick = action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK
         val isRightClick = action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK
 
-        // Obey actionActivation setting
         if (!plugin.infamyManager.getSettings(player.uniqueId).actionActivation) return
 
         if (player.isSneaking && mainItem.type.isAir && isLeftClick && plugin.infamyManager.hasAbility(player, "hunger_absorption", true)) {
@@ -589,13 +624,13 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
         val item = event.item ?: return
 
-        if (isRightClick && item.type.name.endsWith("_SWORD") && plugin.infamyManager.hasAbility(player, "sword_block", false)) {
-            activateSwordBlock(player)
+        if (isRightClick && (item.type == Material.DIAMOND_SWORD || item.type == Material.NETHERITE_SWORD) && plugin.infamyManager.hasAbility(player, "bleeding_edge", false)) {
+            activateBleedingEdge(player)
             return
         }
 
-        if (isRightClick && (item.type == Material.DIAMOND_SWORD || item.type == Material.NETHERITE_SWORD) && plugin.infamyManager.hasAbility(player, "bleeding_edge", false)) {
-            activateBleedingEdge(player)
+        if (isRightClick && item.type.name.endsWith("_SWORD") && plugin.infamyManager.hasAbility(player, "sword_block", false)) {
+            activateSwordBlock(player)
             return
         }
 
@@ -605,8 +640,9 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         }
     }
 
-    private fun createMaceShockwave(player: Player, startY: Double, showParticles: Boolean) {
-        val fallDistance = (startY - player.location.y).coerceAtLeast(1.0)
+    private fun createMaceShockwave(player: Player, peakY: Double, showParticles: Boolean) {
+        val fallDistance = (peakY - player.location.y).coerceAtLeast(3.0)
+        val maxDamage = plugin.config.getDouble("abilities-config.mace-slam.max-splash-damage", 12.0)
 
         if (showParticles) {
             player.world.spawnParticle(Particle.EXPLOSION, player.location, 3)
@@ -618,7 +654,7 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 try {
                     val blockData = player.location.subtract(0.0, 1.0, 0.0).block.blockData
                     player.world.spawnParticle(Particle.DUST_PILLAR, player.location, 10, 0.5, 0.1, 0.5, 0.2, blockData)
-                } catch (e2: Exception) { }
+                } catch (_: Exception) { }
             }
 
             player.world.playSound(player.location, Sound.ITEM_MACE_SMASH_GROUND, 1.2f, 0.9f)
@@ -628,10 +664,16 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
         for (entity in player.getNearbyEntities(6.0, 4.0, 6.0)) {
             if (entity is LivingEntity && entity.uniqueId != player.uniqueId) {
+                if (entity is Player && !plugin.config.getBoolean("settings.team-friendly-fire", true)) {
+                    if (plugin.teamManager.areTeammates(player.uniqueId, entity.uniqueId)) continue
+                }
+
                 val dir = entity.location.toVector().subtract(player.location.toVector()).setY(0.0)
                 if (dir.lengthSquared() > 0) dir.normalize() else dir.setX(1.0)
-                entity.velocity = dir.multiply(1.0).setY(1.4)
-                entity.damage((fallDistance * 1.5).coerceAtMost(12.0), player)
+                entity.velocity = dir.multiply(1.0).setY(0.65)
+
+                entity.noDamageTicks = 0
+                entity.damage((fallDistance * 1.5).coerceAtMost(maxDamage), player)
             }
         }
     }
@@ -647,7 +689,9 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         }
 
         if (event.cause == EntityDamageEvent.DamageCause.FALL && maceActivePlayers.contains(player.uniqueId)) {
-            event.damage *= (1.0 - 0.25)
+            val reduction = plugin.config.getDouble("abilities-config.mace-slam.fall-damage-reduction", 0.25)
+            event.damage *= (1.0 - reduction)
+            maceActivePlayers.remove(player.uniqueId)
         }
     }
 
@@ -672,8 +716,11 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                         if (meta != null) {
                             meta.damage += (event.damage / 2).toInt().coerceAtLeast(1)
                             if (meta.damage > activeItem.type.maxDurability) {
-                                val hand = if (victim.inventory.itemInMainHand == activeItem) org.bukkit.inventory.EquipmentSlot.HAND else org.bukkit.inventory.EquipmentSlot.OFF_HAND
-                                victim.inventory.setItem(hand, null)
+                                if (victim.inventory.itemInMainHand == activeItem) {
+                                    victim.inventory.setItemInMainHand(null)
+                                } else {
+                                    victim.inventory.setItemInOffHand(null)
+                                }
                                 victim.world.playSound(victim.location, Sound.ITEM_SHIELD_BREAK, 1.0f, 1.0f)
                             } else {
                                 activeItem.itemMeta = meta
@@ -739,7 +786,6 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
         val attacker = event.damager as? Player ?: return
 
-        // Dynamic Weapon Fatigue: Mob hit = default vanilla MC, Player hit = long cooldown debuff
         if (plugin.infamyManager.hasAbility(attacker, "weapon_cooldowns", true)) {
             val isVictimPlayer = victim is Player
             if (plugin.pvpDebuffActive[attacker.uniqueId] != isVictimPlayer) {
@@ -751,7 +797,6 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
         if (plugin.infamyManager.hasAbility(attacker, "axe_pierce", false) && victim is Player && victim.isBlocking && attacker.inventory.itemInMainHand.type.name.endsWith("_AXE")) {
             victim.health = (victim.health - 4.0).coerceAtLeast(0.0)
         }
-
         if (plugin.infamyManager.hasAbility(attacker, "axe_stagger", false) && attacker.inventory.itemInMainHand.type.name.endsWith("_AXE")) {
             val now = System.currentTimeMillis()
             val lastUsed = axeStaggerCooldowns[attacker.uniqueId] ?: 0
@@ -760,16 +805,20 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
             if (now - lastUsed > cdMs) {
                 axeStaggerCooldowns[attacker.uniqueId] = now
-                victim.addPotionEffect(PotionEffect(PotionEffectType.SLOWNESS, staggerTicks, 10, false, false, false))
-                victim.addPotionEffect(PotionEffect(PotionEffectType.JUMP_BOOST, staggerTicks, 250, false, false, false))
-                msg(attacker, "Opponent staggered!", NamedTextColor.DARK_RED)
-                if (victim is Player) victim.sendMessage(Component.text("You have been staggered!", NamedTextColor.RED))
+
+                if (victim is Player) {
+                    staggeredPlayers[victim.uniqueId] = now + (staggerTicks * 50L)
+                    victim.velocity = Vector(0.0, 0.0, 0.0)
+                    victim.sendMessage(plugin.messagesManager.getComponent("abilities.stagger-victim"))
+                } else {
+                    victim.addPotionEffect(PotionEffect(PotionEffectType.SLOWNESS, staggerTicks, 10, false, false, false))
+                }
+
+                msg(attacker, plugin.messagesManager.getComponent("abilities.stagger-attacker"))
             } else {
-                msgCD(attacker, "Axe Stagger on CD! (${(cdMs - (now - lastUsed)) / 1000}s)", NamedTextColor.RED)
+                msgCD(attacker, plugin.messagesManager.getComponent("abilities.cooldown-msg", "ability" to "Axe Stagger", "time" to "${(cdMs - (now - lastUsed)) / 1000}s"))
             }
         }
-
-        // Karmic Justice: triggers if primed via command OR if actionActivation is true and player crouch-attacks
         val isKarmaPrimed = primedKarma.remove(attacker.uniqueId) != null
         val isCrouchAction = attacker.isSneaking && plugin.infamyManager.getSettings(attacker.uniqueId).actionActivation
 
@@ -789,10 +838,10 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 event.isCancelled = true
                 victim.noDamageTicks = victim.maximumNoDamageTicks
 
-                msg(attacker, "Karma applied! Delaying your damage for ${delaySecs}s.", NamedTextColor.AQUA)
+                msg(attacker, plugin.messagesManager.getComponent("abilities.karma-applied", "duration" to delaySecs))
 
                 if (victim is Player) {
-                    victim.sendMessage(Component.text("You have been afflicted with Karma! Incoming damage from ${attacker.name} is delayed but accumulating...", NamedTextColor.DARK_PURPLE))
+                    victim.sendMessage(plugin.messagesManager.getComponent("abilities.karma-victim", "attacker" to attacker.name))
                 }
 
                 victim.world.playSound(victim.location, Sound.BLOCK_BEACON_ACTIVATE, 1.0f, 1.0f)
@@ -821,7 +870,9 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                             val finalExplosionDamage = session.accumulatedDamage * (1.0 - nerf)
 
                             victim.world.playSound(victim.location, Sound.BLOCK_BEACON_DEACTIVATE, 1.0f, 1.0f)
-                            if (victim is Player) victim.sendMessage(Component.text("Karma unleashed! You took ${String.format("%.1f", finalExplosionDamage)} damage.", NamedTextColor.RED))
+                            if (victim is Player) {
+                                victim.sendMessage(plugin.messagesManager.getComponent("abilities.karma-unleashed", "damage" to String.format("%.1f", finalExplosionDamage)))
+                            }
 
                             victim.damage(finalExplosionDamage, attacker)
                         }
@@ -829,28 +880,27 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
                 }.runTaskLater(plugin, delaySecs * 20L)
                 return
             } else {
-                msgCD(attacker, "Karmic Justice on CD! (${(cdMs - (now - lastUsed)) / 1000}s)", NamedTextColor.RED)
+                msgCD(attacker, plugin.messagesManager.getComponent("abilities.cooldown-msg", "ability" to "Karmic Justice", "time" to "${(cdMs - (now - lastUsed)) / 1000}s"))
             }
         }
-
         if (activeBleedCharge.containsKey(attacker.uniqueId)) {
             activeBleedCharge.remove(attacker.uniqueId)
-            msg(attacker, "Bleeding Edge strike landed!", NamedTextColor.DARK_RED)
+            msg(attacker, plugin.messagesManager.getComponent("abilities.bleeding-edge-landed"))
 
             var ticks = 0
             val showParticles = plugin.config.getBoolean("settings.show-ability-particles", true)
+            val damagePerTick = plugin.config.getDouble("abilities-config.bleeding-edge.damage-per-tick", 1.0)
+            val iframeTicks = plugin.config.getInt("abilities-config.bleeding-edge.iframe-ticks", 10)
 
             val bleedTask = object : BukkitRunnable() {
                 override fun run() {
                     if (victim.isDead || !victim.isValid) { cancel(); return }
                     if (ticks < 5) {
-                        val targetHealth = (victim.health - 1.0).coerceAtLeast(0.0)
-                        if (targetHealth <= 0.0) victim.damage(100.0, attacker)
-                        else {
-                            victim.health = targetHealth
-                            victim.playHurtAnimation(0f)
-                            victim.noDamageTicks = 10
-                        }
+                        victim.noDamageTicks = 0
+                        victim.damage(damagePerTick, attacker)
+                        victim.playHurtAnimation(0f)
+                        victim.noDamageTicks = iframeTicks
+
                         victim.world.spawnParticle(Particle.DAMAGE_INDICATOR, victim.location.add(0.0, 1.0, 0.0), 5)
 
                         if (showParticles) {
@@ -860,7 +910,9 @@ class CombatListener(private val plugin: InfamySMP) : Listener {
 
                         ticks++
                     } else {
-                        victim.addPotionEffect(PotionEffect(PotionEffectType.NAUSEA, 80, 1))
+                        val nauseaDur = plugin.config.getInt("abilities-config.bleeding-edge.after-effect.duration-ticks", 80)
+                        val nauseaAmp = plugin.config.getInt("abilities-config.bleeding-edge.after-effect.amplifier", 1)
+                        victim.addPotionEffect(PotionEffect(PotionEffectType.NAUSEA, nauseaDur, nauseaAmp))
                         cancel()
                     }
                 }

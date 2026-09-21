@@ -256,7 +256,7 @@ class InfamyManager(private val plugin: InfamySMP) {
         val team = plugin.teamManager.getTeam(player.uniqueId)
         val nameFormat = team?.colorFormat ?: "&f"
 
-        val formattedName = LegacyComponentSerializer.legacyAmpersand().deserialize("$nameFormat${player.name}")
+        val formattedName = TeamColor.deserialize("$nameFormat${player.name}")
 
         val tabName = prefixComponent.append(Component.text(" | ", net.kyori.adventure.text.format.NamedTextColor.GRAY)).append(formattedName)
         player.playerListName(tabName)

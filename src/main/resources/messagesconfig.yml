@@ -1,0 +1,139 @@
+# =======================================================
+# Infamy SMP - Messages Configuration
+# Supports Minecraft Color Codes (&a, &c, &6, etc.)
+# and Hex Colors (&#RRGGBB)
+# =======================================================
+
+bottles:
+  pure-dropped: "&4&lPure infamy bottle dropped on the floor."
+  pure-lost-void: "&4&lThe Pure Infamy is destroy- how the heck did you manage to destroy it.. I coded it to be indestructible. HOW??"
+  inventory-full-refund: "&bInventory Full, Refund point bottles dropped on floor."
+  infamy-consumed: "&aYou consumed an Infamy Bottle."
+  honor-consumed: "&bYou consumed an Honor Bottle."
+  infamy-neutralized: "&e Seems like you consumed an Infamy while having honor. {amount} Honor point(s) refunded to prevent item destruction."
+  honor-neutralized: "&e Seems like you consumed an Honor while having infamy. {amount} Infamy Bottle(s) refunded to prevent item destruction."
+  level-cap-refund: "&eYou hit the level cap, refunded {amount} point(s)."
+  max-level-reached: "&cYou have reached the maximum allowed level."
+  honor-blocked-by-boss: "&cYou cannot consume Honor Bottles while holding the Most Infamous rank."
+  pure-not-lvl20: "&cOnly a Level 20 player can consume the Pure Infamy Bottle."
+  pure-locked: "&cThe rank of Most Infamous is currently overtaken by someone else."
+  pure-bundle-blocked: "&cThe Pure Infamy Bottle cannot be stuffed inside a bundle."
+  pure-container-blocked: "&cThe Pure Infamy Bottle cannot be put inside external containers."
+  pure-stash-blocked: "&cThe Pure Infamy Bottle cannot be stashed inside containers."
+  pure-spread-blocked: "&cThe Pure Infamy Bottle cannot be spread across storage spaces."
+
+boss:
+  ascended-lvl21: "&4{player} has ascended to obtained Level 21."
+  became-most-infamous: "&4{player} has become the Most Infamous."
+  lost-most-infamous: "&e{player} has lost the Most Infamous."
+  boss-lock-cleared: "&4&lThe Most Infamous lock has been cleared by an admin."
+  admin-removed-boss: "&cYour Most Infamous rank has been force-removed by an admin. You are now Level 20, womp womp."
+  lvl21-locked-pure: "&cLevel 21 is currently locked. You must consume a Pure Infamy Bottle to ascend."
+  lvl21-locked-current-boss: "&cYou reached 21 Infamy, but the rank is locked by the current Most Infamous."
+  team-too-large: "&4Your team was too large, so you have been cast out. The Most Infamous can only have 1 teammate."
+
+abilities:
+  cooldown-msg: "&c{ability} on CD. ({time})"
+  not-unlocked: "&cYou have not unlocked {ability}."
+
+  # Axe Stagger
+  stagger-attacker: "&4Opponent staggered."
+  stagger-victim: "&cStagger has been applied to you."
+
+  # Mace Slam
+  mace-slam-activated: "&4Mace Slam activated."
+
+  # Sword Block
+  sword-block-armed: "&aSword Block activated. Guard active for {duration}s."
+
+  # Bleeding Edge
+  bleeding-edge-primed: "&4Bleeding Edge is primed. Your next attack inflicts bleeding."
+  bleeding-edge-landed: "&4Bleeding Edge Applied to target."
+  bleeding-edge-dissipated: "&7Bleeding Edge charge dissipated."
+
+  # Karmic Justice
+  karma-primed: "&bKarmic Justice primed. Your next attack applies damage stacking."
+  karma-applied: "&bKarma inflicted. Stacking your damage for {duration}s."
+  karma-victim: "&5You've been tagged with Karma. Incoming damage from {attacker} is stacking on you."
+  karma-unleashed: "&cKarma released. You took {damage} damage."
+
+  # Shield Abilities
+  shield-sacrificed: "&4Shield Sacrificed. You gained Resistance for {duration}."
+  shield-recovered: "&aShield recovered. (-{hearts} Hearts)"
+  shield-not-on-cooldown: "&cYour shield is not on cooldown."
+
+  # Saturating Shield & Invisibility
+  hunger-converted: "&bHunger converted to Absorption."
+  no-hunger: "&cYou have no hunger to consume for Absorption."
+  true-invis-activated: "&bTrue Invisibility activated for {duration}s."
+  true-invis-faded: "&7True Invisibility ended. You're visible now."
+
+  # Hellcrush
+  hellcrush-activated: "&4Hellcrush activated, Helmet is Defective."
+  hellcrush-faded: "&7Hellcrush dissipated. Helmet is no longer defective."
+
+teams:
+  created: "&aTeam '{team}' created."
+  create-failed: "&cYou are already in a team, or that name is taken."
+  invalid-name: "&cTeam name cannot contain formatting or color codes (& or §)."
+  renamed: "&aTeam has been renamed to {team}."
+  rename-failed: "&cCannot rename team. (Are you the leader? Is the name taken?)"
+  disbanded: "&aTeam disbanded successfully."
+  disbanded-broadcast: "&cThe team '{team}' has been disbanded by the leader."
+  disband-failed: "&cOnly the team leader can disband the team."
+  invite-sent: "&aInvite sent to {player}."
+  invite-received: "&b{player} invited you to join '{team}'. Use /infamy team accept"
+  already-in-team: "&c{player} is already in a team."
+  invite-no-permission: "&cOnly the team leader or officers can invite."
+  player-banned: "&cThis player cannot be added to this team for another {time}."
+  boss-team-limit: "&cA team with the Most Infamous cannot have more than 2 members."
+  no-pending-invites: "&cNo pending invites."
+  you-are-banned: "&cYou cannot join this team for another {time}."
+  joined: "&aYou joined the team."
+  member-joined: "&a{player} joined the team."
+  invite-declined: "&eInvite declined."
+  leader-cannot-leave: "&cYou cannot leave as the leader. You must /infamy team disband."
+  left: "&e{player} left the team."
+  kicked: "&eKicked {player} from the team."
+  member-kicked: "&e{player} was kicked from the team."
+  kick-failed: "&cCannot kick this player. (Insufficient perms or target is immune)"
+  promoted: "&aSuccessfully promoted {player}."
+  member-promoted: "&6{player} has been promoted to Team Officer."
+  demoted: "&eSuccessfully demoted {player}."
+  member-demoted: "&e{player} has been demoted from Team Officer."
+  color-updated: "&aTeam display updated."
+  invalid-color: "&cInvalid Color. Use Tab to view available colors (or #RRGGBB)."
+  invalid-format: "&cInvalid Format '{format}'. Available: bold, italic, underline, strikethrough."
+  icon-reset: "&aTeam icon reset to leader's head."
+  icon-updated: "&aTeam banner icon updated successfully."
+  icon-must-hold-banner: "&cYou must hold a Banner to set the team icon. Use '/infamy team icon reset' to clear it."
+  leader-transferred: "&6{player} is now Team Leader."
+  leader-inherited: "&6{player} is now team leadership."
+  not-in-team: "&cYou are not in a team."
+  not-in-team-chat: "&cYou are not in a team. Team chat disabled."
+  chat-enabled: "&aTeam chat enabled. All chat messages will route to your team."
+  chat-disabled: "&eTeam chat disabled. Messages are now global."
+
+  # Betrayal
+  betrayal-broadcast: "&c{killer} has killed their teammate {victim}."
+  betrayal-private: "&cYou betrayed your teammate."
+  betrayal-banned: "&4You have been kicked from the team and banned for 24 hours for betrayal."
+
+withdraw:
+  disabled: "&cWithdrawing points is disabled."
+  infamy-disabled: "&cInfamy withdrawals are currently disabled by the server."
+  honor-disabled: "&cHonor withdrawals are currently disabled by the server."
+  zero-points: "&cYou have 0 points to withdraw."
+  not-enough-infamy: "&cYou don't have enough Infamy points."
+  not-enough-honor: "&cYou don't have enough Honor points."
+  infamy-success: "&aWithdrawn {amount} Infamy point(s)."
+  honor-success: "&bWithdrawn {amount} Honor point(s)."
+  pure-success: "&aYou withdrew points and extracted the Pure Infamy Bottle."
+
+events:
+  started: "&aEvent Started."
+  ended: "&cEvent Ended."
+  bonus-infamy: "&6Event Bonus: Extra Infamy awarded. (+{amount} Total)"
+
+general:
+  new-title-subtitle: "&7You've earned a new rank with your levels."

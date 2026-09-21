@@ -33,8 +33,6 @@ class EventManager(private val plugin: InfamySMP) {
     private var activeDays: Set<DayOfWeek> = emptySet()
     private val cancelledDays = mutableSetOf<DayOfWeek>()
     private var lastCheckedDay: DayOfWeek? = null
-
-    // Load config
     fun loadConfig() {
         val file = File(plugin.dataFolder, "event.yml")
         if (!file.exists()) {
@@ -64,8 +62,6 @@ class EventManager(private val plugin: InfamySMP) {
         }
         activeDays = days
     }
-
-    // Save calendar
     fun setCalendarEnabled(enabled: Boolean) {
         calendarEnabled = enabled
         if (enabled) {
@@ -80,22 +76,18 @@ class EventManager(private val plugin: InfamySMP) {
             checkCalendarTrigger()
         }
     }
-
-    // Start event
     fun startEvent(durationSeconds: Long, isCalendar: Boolean = false) {
         isEventActive = true
         isCalendarEvent = isCalendar
         eventTimeRemaining = durationSeconds
         eventTotalDuration = if (isCalendar) 86400L else durationSeconds
 
-        val msg = Component.text("Event Started.", NamedTextColor.GREEN)
+        val msg = plugin.messagesManager.getComponent("events.started")
         Bukkit.getOnlinePlayers().forEach { player ->
             player.sendMessage(msg)
             player.playSound(player.location, Sound.BLOCK_BEACON_ACTIVATE, 1.0f, 1.0f)
         }
     }
-
-    // Start calendar event
     private fun startCalendarEvent() {
         val now = ZonedDateTime.now(timezone)
         val midnight = now.toLocalDate().plusDays(1).atStartOfDay(timezone)
@@ -103,8 +95,6 @@ class EventManager(private val plugin: InfamySMP) {
         lastCheckedDay = now.dayOfWeek
         startEvent(secondsUntilMidnight, isCalendar = true)
     }
-
-    // Stop event
     fun stopEvent() {
         if (!isEventActive) return
         val wasCalendar = isCalendarEvent
@@ -118,14 +108,12 @@ class EventManager(private val plugin: InfamySMP) {
             cancelledDays.add(currentDay)
         }
 
-        val msg = Component.text("Event Ended.", NamedTextColor.RED)
+        val msg = plugin.messagesManager.getComponent("events.ended")
         Bukkit.getOnlinePlayers().forEach { player ->
             player.sendMessage(msg)
             player.playSound(player.location, Sound.BLOCK_BEACON_DEACTIVATE, 1.0f, 0.8f)
         }
     }
-
-    // Tick scheduler
     fun tickSecond() {
         if (isEventActive) {
             if (isCalendarEvent) {
@@ -150,8 +138,6 @@ class EventManager(private val plugin: InfamySMP) {
             checkCalendarTrigger()
         }
     }
-
-    // Calendar check
     private fun checkCalendarTrigger() {
         val now = ZonedDateTime.now(timezone)
         val currentDay = now.dayOfWeek
@@ -167,8 +153,6 @@ class EventManager(private val plugin: InfamySMP) {
             startCalendarEvent()
         }
     }
-
-    // Format remaining time
     fun getFormattedRemainingTime(): String {
         if (!isEventActive) return "No"
 
@@ -176,8 +160,6 @@ class EventManager(private val plugin: InfamySMP) {
             val now = ZonedDateTime.now(timezone)
             val midnight = now.toLocalDate().plusDays(1).atStartOfDay(timezone)
             var secs = Duration.between(now, midnight).seconds
-
-            // Consecutive days calculation
             var checkDate = now.plusDays(1)
             while (activeDays.contains(checkDate.dayOfWeek)) {
                 secs += 86400L
@@ -200,8 +182,6 @@ class EventManager(private val plugin: InfamySMP) {
             else -> "${seconds}s"
         }
     }
-
-    // Active modifiers list
     fun getActiveModifiers(): List<String> {
         val list = mutableListOf<String>()
         val config = getEventConfig()

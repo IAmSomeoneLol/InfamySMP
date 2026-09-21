@@ -16,6 +16,8 @@ import java.util.UUID
 
 class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabCompleter {
 
+    private val teamCommand = TeamCommand(plugin)
+
     private fun isAdmin(sender: CommandSender): Boolean = sender.isOp || sender.hasPermission("infamysmp.admin")
 
     private val colorMap = mapOf(
@@ -51,10 +53,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
             "cd" -> if (sender is Player) handleCooldownsCommand(sender, args)
             "debugkill" -> handleDebugKillCommand(sender, args)
             "eventhost" -> handleEventHostCommand(sender, args)
-            "team" -> {
-                if (args.size == 1 && sender is Player) plugin.itemRestrictionsListener.openTeamsGui(sender)
-                else handleTeamCommand(sender, args)
-            }
+            "team" -> teamCommand.onCommand(sender, command, "team", args.drop(1).toTypedArray())
             "add" -> handleAddCommand(sender, args)
             "level" -> handleLevelCommand(sender, args)
             "withdraw" -> handleWithdrawCommand(sender, args)
@@ -80,71 +79,77 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
 
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): MutableList<String> {
         val completions = mutableListOf<String>()
+
+        if (args.isEmpty()) return completions
+
+        if (args[0].lowercase() == "team") {
+            return teamCommand.onTabComplete(sender, command, alias, args.drop(1).toTypedArray())
+        }
+
         if (args.size == 1) {
             val subs = mutableListOf("team", "level", "withdraw", "history", "info", "cd", "settings", "ability", "eventhost")
             if (isAdmin(sender)) subs.addAll(listOf("add", "bottle", "debugkill", "top"))
             completions.addAll(subs.filter { it.startsWith(args[0].lowercase()) })
         } else if (args.size == 2) {
             when (args[0].lowercase()) {
-                "team" -> completions.addAll(listOf("create", "disband", "invite", "accept", "decline", "leave", "kick", "list", "chat", "color", "icon", "leadership", "coords", "promote", "demote", "rename").filter { it.startsWith(args[1].lowercase()) })
                 "ability" -> completions.addAll(listOf("activate").filter { it.startsWith(args[1].lowercase()) })
                 "add", "level", "debugkill" -> if (isAdmin(sender)) completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[1].lowercase()) })
                 "bottle" -> if (isAdmin(sender)) completions.addAll(listOf("honor", "infamy", "pure").filter { it.startsWith(args[1].lowercase()) })
+                "withdraw" -> completions.addAll(listOf("all", "1", "5", "10").filter { it.startsWith(args[1].lowercase()) })
                 "top" -> if (isAdmin(sender)) completions.add("refresh")
                 "history" -> if (isAdmin(sender) && "admin".startsWith(args[1].lowercase())) completions.add("admin")
                 "cd" -> if (isAdmin(sender)) completions.add("refresh")
                 "eventhost" -> if (isAdmin(sender)) completions.addAll(listOf("true", "false", "configcalendar").filter { it.startsWith(args[1].lowercase()) })
             }
         } else if (args.size == 3) {
-            if (args[0].lowercase() == "ability" && args[1].lowercase() == "activate") {
-                if (sender is Player) {
-                    val available = mutableListOf<String>()
-                    val im = plugin.infamyManager
-                    if (im.hasAbility(sender, "true_invisibility", true)) available.add("TrueInvisibility")
-                    if (im.hasAbility(sender, "hunger_absorption", true)) available.add("SaturatingShield")
-                    if (im.hasAbility(sender, "karma_delay", true)) available.add("KarmicJustice")
-                    if (im.hasAbility(sender, "sword_block", false)) available.add("SwordBlock")
-                    if (im.hasAbility(sender, "shield_sacrifice", false)) available.add("ShieldSacrifice")
-                    if (im.hasAbility(sender, "shield_recovery", false)) available.add("ShieldRecovery")
-                    if (im.hasAbility(sender, "bleeding_edge", false)) available.add("BleedingEdge")
-                    if (im.hasAbility(sender, "mace_slam", false)) available.add("MaceSlam")
-                    if (im.hasAbility(sender, "boss_sacrifice", false)) available.add("Hellcrush")
-                    completions.addAll(available.filter { it.lowercase().startsWith(args[2].lowercase()) })
+            when (args[0].lowercase()) {
+                "ability" -> {
+                    if (args[1].lowercase() == "activate" && sender is Player) {
+                        val available = mutableListOf<String>()
+                        val im = plugin.infamyManager
+                        if (im.hasAbility(sender, "true_invisibility", true)) available.add("TrueInvisibility")
+                        if (im.hasAbility(sender, "hunger_absorption", true)) available.add("SaturatingShield")
+                        if (im.hasAbility(sender, "karma_delay", true)) available.add("KarmicJustice")
+                        if (im.hasAbility(sender, "sword_block", false)) available.add("SwordBlock")
+                        if (im.hasAbility(sender, "shield_sacrifice", false)) available.add("ShieldSacrifice")
+                        if (im.hasAbility(sender, "shield_recovery", false)) available.add("ShieldRecovery")
+                        if (im.hasAbility(sender, "bleeding_edge", false)) available.add("BleedingEdge")
+                        if (im.hasAbility(sender, "mace_slam", false)) available.add("MaceSlam")
+                        if (im.hasAbility(sender, "boss_sacrifice", false)) available.add("Hellcrush")
+                        completions.addAll(available.filter { it.lowercase().startsWith(args[2].lowercase()) })
+                    }
                 }
-            } else if ((args[0].lowercase() == "add" || args[0].lowercase() == "bottle" || args[0].lowercase() == "top") && isAdmin(sender)) {
-                completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[2].lowercase()) })
-            } else if (args[0].lowercase() == "debugkill" && isAdmin(sender)) {
-                completions.addAll(listOf("DROPPED", "PICKED_UP", "STASHED", "WITHDRAWN", "STOLEN", "LOST").filter { it.startsWith(args[2].uppercase()) })
-            } else if (args[0].lowercase() == "eventhost" && args[1].lowercase() == "configcalendar" && isAdmin(sender)) {
-                completions.addAll(listOf("true", "false").filter { it.startsWith(args[2].lowercase()) })
-            } else if (args[0].lowercase() == "team") {
-                if (args[1].lowercase() == "icon") completions.addAll(listOf("reset").filter { it.startsWith(args[2].lowercase()) })
-                else if (args[1].lowercase() in listOf("leadership", "kick", "promote", "demote")) completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[2].lowercase()) })
-                else if (args[1].lowercase() == "coords") completions.addAll(listOf("on", "off", "toggle").filter { it.startsWith(args[2].lowercase()) })
-                else if (args[1].lowercase() == "color") completions.addAll(colorMap.keys.filter { it.startsWith(args[2].lowercase()) })
+                "add" -> if (isAdmin(sender)) {
+                    completions.addAll(listOf("honor", "infamy").filter { it.startsWith(args[2].lowercase()) })
+                }
+                "bottle" -> if (isAdmin(sender)) {
+                    completions.addAll(Bukkit.getOnlinePlayers().map { it.name }.filter { it.lowercase().startsWith(args[2].lowercase()) })
+                }
+                "level" -> if (isAdmin(sender)) {
+                    completions.addAll(listOf("reset").filter { it.startsWith(args[2].lowercase()) })
+                }
+                "debugkill" -> if (isAdmin(sender)) {
+                    completions.addAll(listOf("DROPPED", "PICKED_UP", "STASHED", "WITHDRAWN", "STOLEN", "LOST").filter { it.startsWith(args[2].uppercase()) })
+                }
+                "eventhost" -> if (isAdmin(sender) && args[1].lowercase() == "configcalendar") {
+                    completions.addAll(listOf("true", "false").filter { it.startsWith(args[2].lowercase()) })
+                }
             }
-        } else if (args.size >= 4) {
-            if (args[0].lowercase() == "team" && args[1].lowercase() == "color") {
-                completions.addAll(formatMap.keys.filter { it.startsWith(args.last().lowercase()) && !args.contains(it) })
+        } else if (args.size == 4) {
+            when (args[0].lowercase()) {
+                "add" -> if (isAdmin(sender)) completions.addAll(listOf("1", "5", "10", "20").filter { it.startsWith(args[3]) })
+                "bottle" -> if (isAdmin(sender)) completions.addAll(listOf("1", "5", "10").filter { it.startsWith(args[3]) })
+            }
+        } else if (args.size == 5) {
+            if (args[0].lowercase() == "bottle" && isAdmin(sender)) {
+                completions.addAll(listOf("1", "16", "64").filter { it.startsWith(args[4]) })
             }
         }
         return completions
     }
 
     private fun handleActivateAbilityCommand(player: Player, abilityName: String) {
-        val cl = plugin.combatListener
-        when (abilityName.lowercase().replace("_", "")) {
-            "trueinvisibility", "trueinvis", "invis", "invisibility" -> cl.activateTrueInvisibility(player)
-            "saturatingshield", "satshield", "hungerabsorption", "absorption", "hunger" -> cl.activateSaturatingShield(player)
-            "karmicjustice", "karma", "karmadelay" -> cl.primeKarma(player)
-            "shieldsacrifice" -> cl.activateShieldSacrifice(player)
-            "shieldrecovery" -> cl.activateShieldRecovery(player)
-            "swordblock" -> cl.activateSwordBlock(player)
-            "bleedingedge", "bleed" -> cl.activateBleedingEdge(player)
-            "maceslam", "mace" -> cl.activateMaceSlam(player)
-            "hellcrush", "bosssacrifice" -> cl.activateHellcrush(player)
-            else -> player.sendMessage(Component.text("Unknown ability name. Use Tab to see your available unlocked abilities.", NamedTextColor.RED))
-        }
+        plugin.combatListener.activateAbility(player, abilityName)
     }
 
     private fun handleEventHostCommand(sender: CommandSender, args: Array<out String>) {
@@ -295,9 +300,9 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy team create <name>", NamedTextColor.RED))
                 val teamName = args[2]
                 if (teamName.contains("&") || teamName.contains("§")) {
-                    return sender.sendMessage(Component.text("Team name cannot contain formatting or color codes (& or §).", NamedTextColor.RED))
+                    return sender.sendMessage(plugin.messagesManager.getComponent("teams.invalid-name"))
                 }
-                if (plugin.teamManager.createTeam(sender, teamName)) sender.sendMessage(Component.text("Team '$teamName' created!", NamedTextColor.GREEN)) else sender.sendMessage(Component.text("You are already in a team, or that name is taken.", NamedTextColor.RED))
+                if (plugin.teamManager.createTeam(sender, teamName)) sender.sendMessage(plugin.messagesManager.getComponent("teams.created", "team" to teamName)) else sender.sendMessage(plugin.messagesManager.getComponent("teams.create-failed"))
             }
             "rename" -> {
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy team rename <new_name>", NamedTextColor.RED))
@@ -307,7 +312,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 }
                 if (!plugin.teamManager.renameTeam(sender, newName)) sender.sendMessage(Component.text("Cannot rename team! (Are you the leader? Is the name taken?)", NamedTextColor.RED))
             }
-            "disband" -> if (plugin.teamManager.disbandTeam(sender)) sender.sendMessage(Component.text("Team disbanded successfully.", NamedTextColor.GREEN)) else sender.sendMessage(Component.text("Only the team leader can disband the team.", NamedTextColor.RED))
+            "disband" -> if (plugin.teamManager.disbandTeam(sender)) sender.sendMessage(plugin.messagesManager.getComponent("teams.disbanded")) else sender.sendMessage(plugin.messagesManager.getComponent("teams.disband-failed"))
             "invite" -> {
                 if (args.size < 3) return sender.sendMessage(Component.text("Usage: /infamy team invite <player>", NamedTextColor.RED))
                 val target = Bukkit.getPlayer(args[2]) ?: return sender.sendMessage(Component.text("Player not found.", NamedTextColor.RED))
@@ -324,9 +329,9 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 if (hasBoss && myTeam.members.size >= 2) return sender.sendMessage(Component.text("A team with the Boss cannot have more than 2 members!", NamedTextColor.RED))
 
                 if (plugin.teamManager.sendInvite(myTeam.name, target.uniqueId)) {
-                    sender.sendMessage(Component.text("Invite sent to ${target.name}!", NamedTextColor.GREEN))
-                    target.sendMessage(Component.text("${sender.name} invited you to join '${myTeam.name}'! Use /infamy team accept", NamedTextColor.AQUA))
-                } else sender.sendMessage(Component.text("${target.name} is already in a team!", NamedTextColor.RED))
+                    sender.sendMessage(plugin.messagesManager.getComponent("teams.invite-sent", "player" to target.name))
+                    target.sendMessage(plugin.messagesManager.getComponent("teams.invite-received", "player" to sender.name, "team" to myTeam.name))
+                } else sender.sendMessage(plugin.messagesManager.getComponent("teams.already-in-team", "player" to target.name))
             }
             "accept" -> {
                 val targetTeam = plugin.teamManager.getPendingInviteTeam(sender.uniqueId)
@@ -384,10 +389,10 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 if (args.size == 2) {
                     if (plugin.teamManager.teamChatToggled.contains(sender.uniqueId)) {
                         plugin.teamManager.teamChatToggled.remove(sender.uniqueId)
-                        sender.sendMessage(Component.text("Team chat disabled. Messages are now global.", NamedTextColor.YELLOW))
+                        sender.sendMessage(plugin.messagesManager.getComponent("teams.chat-disabled"))
                     } else {
                         plugin.teamManager.teamChatToggled.add(sender.uniqueId)
-                        sender.sendMessage(Component.text("Team chat enabled! All chat messages will route to your team.", NamedTextColor.GREEN))
+                        sender.sendMessage(plugin.messagesManager.getComponent("teams.chat-enabled"))
                     }
                 } else {
                     val msgText = args.drop(2).joinToString(" ")
@@ -403,9 +408,9 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 }
 
                 val colorInput = args[2].lowercase()
-                val colorCode = colorMap[colorInput]
+                val colorCode = com.enxivity.infamy.TeamColor.getLegacyFormat(colorInput)
                 if (colorCode == null) {
-                    sender.sendMessage(Component.text("Invalid Color! Available: ${colorMap.keys.joinToString(", ")}", NamedTextColor.RED))
+                    sender.sendMessage(Component.text("Invalid Color! Use Tab to view available colors (or #RRGGBB).", NamedTextColor.RED))
                     return
                 }
 
@@ -424,7 +429,8 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 }
 
                 team.colorFormat = colorCode + formatCode
-                sender.sendMessage(Component.text("Team color & formatting successfully updated!", NamedTextColor.GREEN))
+                plugin.teamManager.saveData()
+                sender.sendMessage(plugin.messagesManager.getComponent("teams.color-updated"))
                 team.members.mapNotNull { Bukkit.getPlayer(it) }.forEach { plugin.infamyManager.updateTabList(it) }
                 plugin.teamManager.syncAllScoreboards()
             }
@@ -555,12 +561,18 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
         if (!isAdmin && !plugin.config.getBoolean("settings.allow-withdraw", true)) {
             return sender.sendMessage(Component.text("Withdrawing points is disabled.", NamedTextColor.RED))
         }
-        if (args.size < 2) return sender.sendMessage(Component.text("Usage: /infamy withdraw <amount>", NamedTextColor.RED))
+        if (args.size < 2) return sender.sendMessage(Component.text("Usage: /infamy withdraw <amount|all>", NamedTextColor.RED))
 
-        val amount = args[1].toIntOrNull() ?: return sender.sendMessage(Component.text("Invalid amount.", NamedTextColor.RED))
         val currentRep = plugin.infamyManager.getRawReputation(sender)
-
         if (currentRep == 0) return sender.sendMessage(Component.text("You have 0 points to withdraw!", NamedTextColor.RED))
+
+        val amount = if (args[1].equals("all", ignoreCase = true)) {
+            if (currentRep > 0) currentRep else -currentRep
+        } else {
+            val parsed = args[1].toIntOrNull() ?: return sender.sendMessage(Component.text("Invalid amount.", NamedTextColor.RED))
+            if (parsed <= 0) return sender.sendMessage(Component.text("Invalid amount.", NamedTextColor.RED))
+            parsed
+        }
 
         if (currentRep > 0) {
             if (!isAdmin && !plugin.config.getBoolean("settings.allow-withdraw-infamy", true)) {
@@ -605,7 +617,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                     }
                     sender.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
                 }
-                sender.sendMessage(Component.text("Successfully withdrew $amount Infamy point(s)!", NamedTextColor.GREEN))
+                sender.sendMessage(plugin.messagesManager.getComponent("withdraw.infamy-success", "amount" to amount))
             }
         } else {
             if (!isAdmin && !plugin.config.getBoolean("settings.allow-withdraw-honor", true)) {
@@ -625,7 +637,7 @@ class InfamyCommand(private val plugin: InfamySMP) : CommandExecutor, TabComplet
                 }
                 sender.sendMessage(Component.text("Inventory Full, Refund dropped on floor.", NamedTextColor.AQUA))
             }
-            sender.sendMessage(Component.text("Successfully withdrew $amount Honor point(s)!", NamedTextColor.AQUA))
+            sender.sendMessage(plugin.messagesManager.getComponent("withdraw.honor-success", "amount" to amount))
         }
     }
 

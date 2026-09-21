@@ -3,6 +3,7 @@ package com.enxivity.infamy.listeners
 
 import com.enxivity.infamy.ECSnapshotHolder
 import com.enxivity.infamy.InfamySMP
+import com.enxivity.infamy.TeamColor
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
@@ -53,7 +54,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         val text = event.inventory.renameText
         if (!text.isNullOrEmpty() && text.contains("&")) {
             val meta = result.itemMeta
-            meta?.displayName(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize(text).decoration(TextDecoration.ITALIC, false))
+            meta?.displayName(TeamColor.deserialize(text).decoration(TextDecoration.ITALIC, false))
             result.itemMeta = meta
             event.result = result
         }
@@ -95,7 +96,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
 
             if (isBossBottle(item)) {
                 val dropLoc = event.itemDrop.location
-                val msg = Component.text("A Pure Infamy Bottle has been dropped into the world! Listen closely...", NamedTextColor.DARK_RED, TextDecoration.BOLD)
+                val msg = plugin.messagesManager.getComponent("bottles.pure-dropped")
                 Bukkit.getOnlinePlayers().filter { plugin.infamyManager.getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(msg) }
 
                 Bukkit.getOnlinePlayers().forEach { p ->
@@ -118,7 +119,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
             if (isBossBottle(item.itemStack)) {
                 if (event.cause == EntityDamageEvent.DamageCause.VOID) {
                     updateBottleStatus(item.itemStack, "LOST", null)
-                    val msg = Component.text("The Pure Infamy Bottle has been lost to the abyss! The server is softlocked until an admin intervenes.", NamedTextColor.DARK_RED, TextDecoration.BOLD)
+                    val msg = plugin.messagesManager.getComponent("bottles.pure-lost-void")
                     Bukkit.getOnlinePlayers().filter { plugin.infamyManager.getSettings(it.uniqueId).globalMessages }.forEach { it.sendMessage(msg) }
                 } else {
                     event.isCancelled = true
@@ -186,7 +187,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
                     22 -> settings.abilityMessages = !settings.abilityMessages
                     23 -> settings.cooldownMessages = !settings.cooldownMessages
                     24 -> settings.teamMessages = !settings.teamMessages
-                    29 -> settings.actionActivation = !settings.actionActivation // Toggle action-based activation
+                    29 -> settings.actionActivation = !settings.actionActivation
                     30 -> settings.abilityMessagesInChat = !settings.abilityMessagesInChat
                     32 -> { openScoreboardSettingsGUI(player); return }
                     49 -> { openInfoGui(player); return }
@@ -243,24 +244,24 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
 
         if ((isBossBottle(current) && cursor?.type == Material.BUNDLE) || (isBossBottle(cursor) && current?.type == Material.BUNDLE)) {
             event.isCancelled = true
-            player.sendMessage(Component.text("The Pure Infamy Bottle cannot be stuffed inside a bundle!", NamedTextColor.RED))
+            player.sendMessage(plugin.messagesManager.getComponent("bottles.pure-bundle-blocked"))
             return
         }
 
         if (clickedInv != null && clickedInv.type != InventoryType.PLAYER) {
             if (isBossBottle(cursor) || isBossBottle(current)) {
                 event.isCancelled = true
-                player.sendMessage(Component.text("The Pure Infamy Bottle cannot be put inside external containers!", NamedTextColor.RED))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.pure-container-blocked"))
                 return
             }
             if (event.click == ClickType.NUMBER_KEY && isBossBottle(player.inventory.getItem(event.hotbarButton))) {
                 event.isCancelled = true
-                player.sendMessage(Component.text("The Pure Infamy Bottle cannot be put inside external containers!", NamedTextColor.RED))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.pure-container-blocked"))
                 return
             }
             if (event.click == ClickType.SWAP_OFFHAND && isBossBottle(player.inventory.itemInOffHand)) {
                 event.isCancelled = true
-                player.sendMessage(Component.text("The Pure Infamy Bottle cannot be put inside external containers!", NamedTextColor.RED))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.pure-container-blocked"))
                 return
             }
         }
@@ -268,7 +269,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         if (event.click.isShiftClick && clickedInv?.type == InventoryType.PLAYER && topInv.type != InventoryType.PLAYER && topInv.type != InventoryType.CRAFTING) {
             if (isBossBottle(current)) {
                 event.isCancelled = true
-                player.sendMessage(Component.text("The Pure Infamy Bottle cannot be stashed inside containers!", NamedTextColor.RED))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.pure-stash-blocked"))
             }
         }
     }
@@ -283,7 +284,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         if (event.view.topInventory.type != InventoryType.PLAYER && event.view.topInventory.type != InventoryType.CRAFTING) {
             if (isBossBottle(event.oldCursor) && event.rawSlots.any { it < event.view.topInventory.size }) {
                 event.isCancelled = true
-                event.whoClicked.sendMessage(Component.text("The Pure Infamy Bottle cannot be spread across storage spaces!", NamedTextColor.RED))
+                event.whoClicked.sendMessage(plugin.messagesManager.getComponent("bottles.pure-spread-blocked"))
             } else if (isNormalKillBottle(event.oldCursor) && event.rawSlots.any { it < event.view.topInventory.size }) {
                 val stashInfo = "${event.whoClicked.location.blockX}, ${event.whoClicked.location.blockY}, ${event.whoClicked.location.blockZ} (${event.whoClicked.world.name})"
                 updateBottleStatus(event.oldCursor, "STASHED", stashInfo)
@@ -322,7 +323,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
             else -> Component.text("Level: 0", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
         }
         val tagRaw = plugin.infamyManager.getPrefixText(rep)
-        val tagComp = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize(tagRaw).decoration(TextDecoration.ITALIC, false)
+        val tagComp = TeamColor.deserialize(tagRaw).decoration(TextDecoration.ITALIC, false)
         val team = plugin.teamManager.getTeam(player.uniqueId)
 
         meta.lore(listOf(
@@ -428,7 +429,6 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
         inv.setItem(23, createSettingItem(Material.CLOCK, "Cooldown Warnings", settings.cooldownMessages))
         inv.setItem(24, createSettingItem(Material.NAME_TAG, "Team Messages", settings.teamMessages))
 
-        // Slot 29: Ability Activation Via Action toggle
         inv.setItem(29, createSettingItem(Material.LEVER, "Ability Activation Via Action", settings.actionActivation, listOf("Allows triggering abilities via in-game", "crouch & click actions.")))
 
         val locStr = if (settings.abilityMessagesInChat) "Chat Box" else "Action Bar"
@@ -656,7 +656,7 @@ class ItemRestrictionsListener(private val plugin: InfamySMP) : Listener {
             team.members.forEach { uuid ->
                 val offline = Bukkit.getOfflinePlayer(uuid)
                 val rep = plugin.infamyManager.getRawReputationByUUID(uuid)
-                val tagComp = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize(plugin.infamyManager.getPrefixText(rep)).decoration(TextDecoration.ITALIC, false)
+                val tagComp = TeamColor.deserialize(plugin.infamyManager.getPrefixText(rep)).decoration(TextDecoration.ITALIC, false)
                 val role = if (team.leader == uuid) " [L]" else if (team.officers.contains(uuid)) " [O]" else ""
                 val memberComp = if (offline.isOnline) {
                     Component.text("+ ", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false).append(Component.text((offline.name ?: "Unknown") + role, NamedTextColor.WHITE)).append(Component.text(" | ", NamedTextColor.DARK_GRAY)).append(tagComp)
