@@ -96,9 +96,6 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
             }
         }
 
-        // =======================
-        // CONSUMING INFAMY BOTTLE
-        // =======================
         if (pdc.has(plugin.itemManager.infamyKey, PersistentDataType.INTEGER)) {
             event.isCancelled = true
             val points = pdc.get(plugin.itemManager.infamyKey, PersistentDataType.INTEGER) ?: 1
@@ -117,23 +114,23 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
             val isLocked = plugin.infamyManager.currentBoss != null && !plugin.infamyManager.forceUnlock21
             val maxAllowed = if (isLocked) 20 else 21
 
-            if (currentRep >= maxAllowed) {
-                player.sendMessage(plugin.messagesManager.getComponent("bottles.max-level-reached"))
-                return
-            }
-
-            val targetRep = currentRep + points
-
-            if (currentRep < 0 && targetRep > currentRep) {
-                val refundAmount = Math.min(points, -currentRep)
-                val refundBottle = plugin.itemManager.createHonorBottle(refundAmount)
+            var effectiveRep = currentRep
+            if (currentRep < 0) {
+                val honorPoints = -currentRep
+                val refundBottle = plugin.itemManager.createHonorBottle(honorPoints)
                 val leftovers = player.inventory.addItem(refundBottle)
                 if (leftovers.isNotEmpty()) {
                     leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
                     player.sendMessage(plugin.messagesManager.getComponent("bottles.inventory-full-refund"))
                 }
-                player.sendMessage(plugin.messagesManager.getComponent("bottles.infamy-neutralized", "amount" to refundAmount))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.infamy-neutralized", "amount" to honorPoints))
+                effectiveRep = 0
+            } else if (currentRep >= maxAllowed) {
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.max-level-reached"))
+                return
             }
+
+            val targetRep = effectiveRep + points
 
             if (targetRep > maxAllowed) {
                 val refundAmount = targetRep - maxAllowed
@@ -161,9 +158,7 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
             return
         }
 
-        // =======================
-        // CONSUMING HONOR BOTTLE
-        // =======================
+
         if (pdc.has(plugin.itemManager.honorKey, PersistentDataType.INTEGER)) {
             event.isCancelled = true
 
@@ -174,26 +169,27 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
 
             val points = pdc.get(plugin.itemManager.honorKey, PersistentDataType.INTEGER) ?: 1
 
-            if (currentRep <= -21) {
-                player.sendMessage(plugin.messagesManager.getComponent("bottles.max-level-reached"))
-                return
-            }
-
-            // Honor neutralizes active Infamy points
+            var effectiveRep = currentRep
             if (currentRep > 0) {
-                val neutralized = Math.min(points, currentRep)
-                val refundBottle = plugin.itemManager.createInfamyBottle(neutralized, "Neutralized", player.uniqueId.toString())
+                val infamyPoints = currentRep
+                plugin.infamyManager.withdrawnPoints[player.uniqueId] = (plugin.infamyManager.withdrawnPoints[player.uniqueId] ?: 0) + infamyPoints
+
+                val refundBottle = plugin.itemManager.createInfamyBottle(infamyPoints, player.name, player.uniqueId.toString())
                 val leftovers = player.inventory.addItem(refundBottle)
                 if (leftovers.isNotEmpty()) {
                     leftovers.values.forEach { player.world.dropItemNaturally(player.location, it) }
                     player.sendMessage(plugin.messagesManager.getComponent("bottles.inventory-full-refund"))
                 }
-                player.sendMessage(plugin.messagesManager.getComponent("bottles.honor-neutralized", "amount" to neutralized))
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.honor-neutralized", "amount" to infamyPoints))
+                effectiveRep = 0
+            } else if (currentRep <= -21) {
+                player.sendMessage(plugin.messagesManager.getComponent("bottles.max-level-reached"))
+                return
             }
 
-            val targetRep = currentRep - points
+            val targetRep = effectiveRep - points
             if (targetRep < -21) {
-                val applied = (-21 - currentRep).let { if (it < 0) -it else 0 }
+                val applied = (-21 - effectiveRep).let { if (it < 0) -it else 0 }
                 val refundAmount = points - applied
                 plugin.infamyManager.setReputation(player, -21)
                 player.sendMessage(plugin.messagesManager.getComponent("bottles.level-cap-refund", "amount" to refundAmount))
@@ -206,7 +202,7 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
                 }
             } else {
                 plugin.infamyManager.setReputation(player, targetRep)
-                // Reads your custom message ending with '.' from messagesconfig.yml
+
                 player.sendMessage(plugin.messagesManager.getComponent("bottles.honor-consumed"))
             }
 
@@ -216,9 +212,9 @@ class BottleInteractListener(private val plugin: InfamySMP) : Listener {
             return
         }
 
-        // =======================
-        // CONSUMING PURE INFAMY BOTTLE
-        // =======================
+
+
+
         if (pdc.has(plugin.itemManager.bossKey, PersistentDataType.INTEGER)) {
             event.isCancelled = true
             if (currentRep != 20) {
